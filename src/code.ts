@@ -216,11 +216,15 @@ ${slugs
       let body = await response.text();
       // Rewrite domain info to prevent redirect
       body = rewriteDomainInBody(body);
-      // Also rewrite specific fields that cause redirects
+      // Also rewrite specific fields that cause redirects or interstitial pages
       try {
         const json = JSON.parse(body);
         if (json.spaceDomain) json.spaceDomain = MY_DOMAIN.split('.')[0];
         if (json.publicDomainName) json.publicDomainName = MY_DOMAIN;
+        // Remove requireInterstitial to prevent "page not found" error
+        delete json.requireInterstitial;
+        // Set requestedOnExternalDomain to false to avoid external domain checks
+        json.requestedOnExternalDomain = false;
         body = JSON.stringify(json);
       } catch (e) {
         // If JSON parsing fails, continue with string replacement
