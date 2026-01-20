@@ -1,33 +1,35 @@
-import React, { useState, useRef } from "react";
-import { Button, Collapse, InputAdornment, TextField, Container, RadioGroup, Radio, Box, Alert, Stack, Select, MenuItem, InputLabel, FormControl, FormControlLabel, Typography} from "@mui/material";
-import code from "./code.js";
+import React, { useState, useRef, ChangeEvent } from "react";
+import { Button, Collapse, InputAdornment, TextField, Container, RadioGroup, Radio, Box, Alert, Stack, Select, MenuItem, InputLabel, FormControl, FormControlLabel, Typography, SelectChangeEvent } from "@mui/material";
+import code, { CodeData, ImageOptions } from "./code";
 import "./styles.css";
 
 const DEFAULT_DOMAIN = "worknot.classmethod.cf";
 const DEFAULT_NOTION_URL =
   "https://succinct-scar-f20.notion.site/Sample-Web-Site-148f2fc322e74473a91fb4d90836e3ce";
 
-function validDomain(domain) {
+function validDomain(domain: string): RegExpMatchArray | null {
   return domain.match(
     /^((https:\/\/)|(http:\/\/))?[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9](?:\.[a-zA-Z]{2,})+(\/)?$/
   );
 }
 
-function validNotionUrl(url) {
+function validNotionUrl(url: string): boolean {
   if (!url) return true;
   try {
     const link = new URL(url);
     return (
       (link.hostname.endsWith("notion.so") || link.hostname.endsWith("notion.site")) &&
-      link.pathname.slice(-32).match(/[0-9a-f]{32}/)
+      !!link.pathname.slice(-32).match(/[0-9a-f]{32}/)
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 }
 
+type SlugPair = [string, string];
+
 export default function App() {
-  const [slugs, setSlugs] = useState([]);
+  const [slugs, setSlugs] = useState<SlugPair[]>([]);
   const [myDomain, setMyDomain] = useState("");
   const [notionUrl, setNotionUrl] = useState("");
   const [pageTitle, setPageTitle] = useState("");
@@ -36,34 +38,35 @@ export default function App() {
   const [customScript, setCustomScript] = useState("");
   const [customCss, setCustomCss] = useState("");
   const [optional, setOptional] = useState(false);
-  const [optionImage, setOptionImage] = useState({});
+  const [optionImage, setOptionImage] = useState<ImageOptions>({});
   const [optionalImageResize, setOptionalImageResize] = useState(false);
   const [copied, setCopied] = useState(false);
-  const handleMyDomain = e => {
+
+  const handleMyDomain = (e: ChangeEvent<HTMLInputElement>) => {
     setMyDomain(e.target.value);
     setCopied(false);
   };
-  const handleNotionUrl = e => {
+  const handleNotionUrl = (e: ChangeEvent<HTMLInputElement>) => {
     setNotionUrl(e.target.value);
     setCopied(false);
   };
-  const handlePageTitle = e => {
+  const handlePageTitle = (e: ChangeEvent<HTMLInputElement>) => {
     setPageTitle(e.target.value);
     setCopied(false);
   };
-  const handlePageDescription = e => {
+  const handlePageDescription = (e: ChangeEvent<HTMLInputElement>) => {
     setPageDescription(e.target.value);
     setCopied(false);
   };
-  const handleGoogleFont = e => {
+  const handleGoogleFont = (e: ChangeEvent<HTMLInputElement>) => {
     setGoogleFont(e.target.value);
     setCopied(false);
   };
-  const handleCustomScript = e => {
+  const handleCustomScript = (e: ChangeEvent<HTMLInputElement>) => {
     setCustomScript(e.target.value);
     setCopied(false);
   };
-  const handleCustomCss = e => {
+  const handleCustomCss = (e: ChangeEvent<HTMLInputElement>) => {
     setCustomCss(e.target.value);
     setCopied(false);
   };
@@ -71,11 +74,11 @@ export default function App() {
     setSlugs([...slugs, ["", ""]]);
     setCopied(false);
   };
-  const deleteSlug = index => {
+  const deleteSlug = (index: number) => {
     setSlugs([...slugs.slice(0, index), ...slugs.slice(index + 1)]);
     setCopied(false);
   };
-  const handleCustomURL = (value, index) => {
+  const handleCustomURL = (value: string, index: number) => {
     setSlugs([
       ...slugs.slice(0, index),
       [value, slugs[index][1]],
@@ -83,7 +86,7 @@ export default function App() {
     ]);
     setCopied(false);
   };
-  const handleNotionPageURL = (value, index) => {
+  const handleNotionPageURL = (value: string, index: number) => {
     setSlugs([
       ...slugs.slice(0, index),
       [slugs[index][0], value],
@@ -95,19 +98,29 @@ export default function App() {
     setOptional(!optional);
   };
 
-  const handleImageOption = (target) => {
-    let formValue = target.value
-    if (target.name === 'imageResizeType') {
-      target.value === 'resize' ? setOptionalImageResize(true) : setOptionalImageResize(false)
-    } else if (target.name === 'imageQuality') {
-      formValue > 100 && (formValue = 100)
-      formValue < 0 && (formValue = 1)
-    } else if (target.name === 'imageBlur') {
-      formValue > 250 && (formValue = 250)
-      formValue < 0 && (formValue = 0)
+  const handleImageOption = (target: EventTarget & (HTMLInputElement | HTMLTextAreaElement)) => {
+    let formValue: string | number = target.value;
+    const name = target.name as keyof ImageOptions;
+
+    if (name === 'imageResizeType') {
+      setOptionalImageResize(target.value === 'resize');
+    } else if (name === 'imageQuality') {
+      const num = Number(formValue);
+      if (num > 100) formValue = 100;
+      if (num < 0) formValue = 1;
+    } else if (name === 'imageBlur') {
+      const num = Number(formValue);
+      if (num > 250) formValue = 250;
+      if (num < 0) formValue = 0;
     }
-    optionImage[target.name] = formValue
-    setOptionImage({ ...optionImage })
+
+    setOptionImage({ ...optionImage, [name]: formValue });
+    setCopied(false);
+  };
+
+  const handleSelectChange = (e: SelectChangeEvent<string>) => {
+    const name = e.target.name as keyof ImageOptions;
+    setOptionImage({ ...optionImage, [name]: e.target.value });
     setCopied(false);
   };
 
@@ -120,26 +133,29 @@ export default function App() {
     ? "Please enter a valid Notion Page URL"
     : undefined;
   const noError = !myDomainHelperText && !notionUrlHelperText;
-  const script = noError
-    ? code({
-        myDomain: domain,
-        notionUrl: url,
-        slugs,
-        pageTitle,
-        pageDescription,
-        googleFont,
-        customScript,
-        customCss,
-        optionImage
-      })
-    : undefined;
-  const textarea = useRef("");
+
+  const codeData: CodeData = {
+    myDomain: domain,
+    notionUrl: url,
+    slugs,
+    pageTitle,
+    pageDescription,
+    googleFont,
+    customScript,
+    customCss,
+    optionImage
+  };
+
+  const script = noError ? code(codeData) : undefined;
+  const textarea = useRef<HTMLTextAreaElement>(null);
+
   const copy = () => {
-    if (!noError) return;
+    if (!noError || !textarea.current) return;
     textarea.current.select();
     document.execCommand("copy");
     setCopied(true);
   };
+
   return (
     <Container maxWidth="md">
       <TextField
@@ -164,7 +180,7 @@ export default function App() {
       />
       {slugs.map(([customUrl, notionPageUrl], index) => {
         return (
-          <section>
+          <section key={index}>
             <TextField
               fullWidth
               InputProps={{
@@ -172,7 +188,6 @@ export default function App() {
                   <InputAdornment position="start">{`${domain}/`}</InputAdornment>
                 )
               }}
-              key="key"
               label="Pretty Link"
               margin="normal"
               placeholder="about"
@@ -183,7 +198,6 @@ export default function App() {
             <TextField
               fullWidth
               label={`Notion URL for ${domain}/${customUrl || "about"}`}
-              key="value"
               margin="normal"
               placeholder={DEFAULT_NOTION_URL}
               onChange={e => handleNotionPageURL(e.target.value, index)}
@@ -296,7 +310,7 @@ export default function App() {
               name="imageWidth"
               placeholder="1600"
               onChange={e => handleImageOption(e.target)}
-              value={Number(optionImage["imageWidth"]).toString() || ''}
+              value={optionImage.imageWidth ?? ''}
               variant="filled"
               sx={{ m: 1, width: '20ch' }}
             />
@@ -306,7 +320,7 @@ export default function App() {
               name="imageHeight"
               placeholder="800"
               onChange={e => handleImageOption(e.target)}
-              value={Number(optionImage["imageHeight"]).toString() || ''}
+              value={optionImage.imageHeight ?? ''}
               variant="filled"
               sx={{ m: 1, width: '20ch' }}
             />
@@ -317,7 +331,7 @@ export default function App() {
               name="imageQuality"
               placeholder="60"
               onChange={e => handleImageOption(e.target)}
-              value={Number(optionImage["imageQuality"]).toString() || ''}
+              value={optionImage.imageQuality ?? ''}
               variant="filled"
               sx={{ m: 1, width: '12ch' }}
             />
@@ -330,8 +344,8 @@ export default function App() {
                 labelId="imageFormatLabel"
                 label="Format"
                 name="imageFormat"
-                value={optionImage["imageFormat"] || ''}
-                onChange={e => handleImageOption(e.target)}
+                value={optionImage.imageFormat ?? ''}
+                onChange={handleSelectChange}
               >
                 <MenuItem value="avif">avif</MenuItem>
                 <MenuItem value="webp">webp</MenuItem>
@@ -347,8 +361,8 @@ export default function App() {
                 labelId="imageFitLabel"
                 label="Fit"
                 name="imageFit"
-                value={optionImage["imageFit"] || ''}
-                onChange={e => handleImageOption(e.target)}
+                value={optionImage.imageFit ?? ''}
+                onChange={handleSelectChange}
               >
                 <MenuItem value="scale-down">scale-down</MenuItem>
                 <MenuItem value="contain">contain</MenuItem>
@@ -364,13 +378,13 @@ export default function App() {
               name="imageBlur"
               placeholder="50"
               onChange={e => handleImageOption(e.target)}
-              value={Number(optionImage["imageBlur"]).toString() || ''}
+              value={optionImage.imageBlur ?? ''}
               variant="filled"
               sx={{ m: 1, width: '20ch' }}
             />
           </Box>
           <Alert severity="warning">
-            To activate this option, please turn on `Image Resizing` from the dashboard. <a href="https://developers.cloudflare.com/images/image-resizing/enable-image-resizing/" target="_blank">More details</a>
+            To activate this option, please turn on `Image Resizing` from the dashboard. <a href="https://developers.cloudflare.com/images/image-resizing/enable-image-resizing/" target="_blank" rel="noreferrer">More details</a>
           </Alert>
         </Collapse>
       </Stack>
@@ -386,20 +400,16 @@ export default function App() {
         </Button>
       </section>
       {noError ? (
-        <>
-          <TextField
-            fullWidth
-            margin="normal"
-            rowsMax={5}
-            multiline
-            inputRef={textarea}
-            value={script}
-            variant="outlined"
-          />
-        </>
-      ) : (
-        ""
-      )}
+        <TextField
+          fullWidth
+          margin="normal"
+          maxRows={5}
+          multiline
+          inputRef={textarea}
+          value={script}
+          variant="outlined"
+        />
+      ) : null}
     </Container>
   );
 }

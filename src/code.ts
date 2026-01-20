@@ -1,33 +1,55 @@
-function getId(url) {
-    try {
-        const id = new URL(url).pathname.slice(-32);
-        if (id.match(/[0-9a-f]{32}/)) return id;
-        return '';
-    } catch (e) {
-        return '';
-    }
+export interface ImageOptions {
+  imageResizeType?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  imageQuality?: number;
+  imageFormat?: string;
+  imageFit?: string;
+  imageBlur?: number;
 }
 
-export default function code(data) {
-    const {
-        myDomain,
-        notionUrl,
-        slugs,
-        pageTitle,
-        pageDescription,
-        googleFont,
-        customScript,
-        customCss,
-        optionImage,
-    } = data;
-    let url = myDomain.replace('https://', '').replace('http://', '');
-    if (url.slice(-1) === '/') url = url.slice(0, url.length - 1);
+export interface CodeData {
+  myDomain: string;
+  notionUrl: string;
+  slugs: [string, string][];
+  pageTitle: string;
+  pageDescription: string;
+  googleFont: string;
+  customScript: string;
+  customCss: string;
+  optionImage: ImageOptions;
+}
 
-    return `  /* CONFIGURATION STARTS HERE */
-  
+function getId(url: string): string {
+  try {
+    const id = new URL(url).pathname.slice(-32);
+    if (id.match(/[0-9a-f]{32}/)) return id;
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+export default function code(data: CodeData): string {
+  const {
+    myDomain,
+    notionUrl,
+    slugs,
+    pageTitle,
+    pageDescription,
+    googleFont,
+    customScript,
+    customCss,
+    optionImage,
+  } = data;
+  let url = myDomain.replace('https://', '').replace('http://', '');
+  if (url.slice(-1) === '/') url = url.slice(0, url.length - 1);
+
+  return `  /* CONFIGURATION STARTS HERE */
+
   /* Step 1: enter your domain name like something.example.com */
   const MY_DOMAIN = '${url}';
-  
+
   /*
    * Step 2: enter your URL slug to page ID mapping
    * The key on the left is the slug (without the slash)
@@ -36,38 +58,38 @@ export default function code(data) {
   const SLUG_TO_PAGE = {
     '': '${getId(notionUrl)}',
 ${slugs
-    .map(([pageUrl, notionUrl]) => {
-        const id = getId(notionUrl);
-        if (!id || !pageUrl) return '';
-        return `    '${pageUrl}': '${id}',\n`;
+    .map(([pageUrl, notionPageUrl]) => {
+      const id = getId(notionPageUrl);
+      if (!id || !pageUrl) return '';
+      return `    '${pageUrl}': '${id}',\n`;
     })
     .join('')}  };
-  
+
   /* Step 3: enter your page title and description for SEO purposes */
   const PAGE_TITLE = '${pageTitle || ''}';
   const PAGE_DESCRIPTION = '${pageDescription || ''}';
-  
+
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
   const GOOGLE_FONT = '${googleFont || ''}';
-  
+
   /* Step 5: enter any custom scripts and styles you'd like */
   const CUSTOM_SCRIPT = \`${customScript || ''}\`;
   const CUSTOM_CSS = \`${customCss || ''}\`;
-  
+
   /*
    * Step 6: enter your preference of image optimization
    * You can choose from none or resize
    * Polish cannnot be chosen at the moment
    */
-  const IMAGE_OPTIMIZATION = \`${optionImage["imageResizeType"] || ''}\`;
+  const IMAGE_OPTIMIZATION = \`${optionImage.imageResizeType || ''}\`;
   //If you choose 'resize' above, please configure the details
   const IMAGE_RESIZE_OPTIONS = {
-    width: ${Math.trunc(optionImage["imageWidth"]) || "''"},
-    height: ${Math.trunc(optionImage["imageHeight"]) || "''"},
-    quality: ${Math.trunc(optionImage["imageQuality"]) || "''"},
-    format: '${optionImage["imageFormat"] || ''}',
-    fit: '${optionImage["imageFit"] || ''}',
-    blur: ${optionImage["imageBlur"] || 0}
+    width: ${optionImage.imageWidth ? Math.trunc(optionImage.imageWidth) : "''"},
+    height: ${optionImage.imageHeight ? Math.trunc(optionImage.imageHeight) : "''"},
+    quality: ${optionImage.imageQuality ? Math.trunc(optionImage.imageQuality) : "''"},
+    format: '${optionImage.imageFormat || ''}',
+    fit: '${optionImage.imageFit || ''}',
+    blur: ${optionImage.imageBlur || 0}
   };
 
   /* CONFIGURATION ENDS HERE */
@@ -81,7 +103,7 @@ ${slugs
     pages.push(page);
     PAGE_TO_SLUG[page] = slug;
   });
-  
+
   addEventListener('fetch', event => {
     event.respondWith(fetchAndApply(event.request));
   });
@@ -106,13 +128,13 @@ ${slugs
     sitemap += '</urlset>';
     return sitemap;
   }
-  
+
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
-  
+
   function handleOptions(request) {
     if (request.headers.get('Origin') !== null &&
       request.headers.get('Access-Control-Request-Method') !== null &&
@@ -130,7 +152,7 @@ ${slugs
       });
     }
   }
-  
+
   async function fetchAndApply(request) {
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
@@ -181,10 +203,10 @@ ${slugs
       response.headers.delete('Content-Security-Policy');
       response.headers.delete('X-Content-Security-Policy');
     }
-  
+
     return appendJavascript(response, SLUG_TO_PAGE);
   }
-  
+
   class MetaRewriter {
     element(element) {
       if (MY_DOMAIN !== '') {
@@ -217,7 +239,7 @@ ${slugs
       }
     }
   }
-  
+
   class HeadRewriter {
     element(element) {
       if (GOOGLE_FONT !== '') {
@@ -240,7 +262,7 @@ ${slugs
       })
     }
   }
-  
+
   class BodyRewriter {
     constructor(SLUG_TO_PAGE) {
       this.SLUG_TO_PAGE = SLUG_TO_PAGE;
@@ -347,7 +369,7 @@ ${slugs
       });
     }
   }
-  
+
   async function appendJavascript(res, SLUG_TO_PAGE) {
     return new HTMLRewriter()
       .on('title', new MetaRewriter())
