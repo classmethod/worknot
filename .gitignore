@@ -1,5 +1,0 @@
-node_modules/
-build/
-.wrangler/
-.DS_Store
-.gitignore
