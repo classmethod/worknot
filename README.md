@@ -4,49 +4,26 @@ Worknot is a Notion wrapper powered by Cloudflare Workers. This project is a for
 
 ## Features
 
-- Fast and efficient Notion wrapper powered by Cloudflare Workers
-- Utilizes Cloudflare services to provide a more seamless and integrated experience with Notion sites
-- Easy to set up and use with any Notion site
-- Image resizing and format conversion option is available
+- Custom domain for your Notion pages
+- Pretty URLs (slugs) for cleaner page paths
+- Custom page title and meta description
+- Google Fonts integration
+- Custom CSS and JavaScript injection
+- Image optimization with Cloudflare Image Resizing (resize, format conversion, quality control)
+- Fast global delivery via Cloudflare's edge network
 
-## Demo
+## Usage
 
-Workers script generator is available here: https://worknot.classmethodeurope.workers.dev/
+Visit the Workers Script Generator at:
 
-## Development
+**https://worknot.classmethod.live/**
 
-### Prerequisites
+1. Enter your custom domain
+2. Enter your Notion page URL
+3. Optionally configure pretty links, styling, and image optimization
+4. Copy the generated script
+5. Deploy to Cloudflare Workers
 
-- Node.js
-- npm
+## License
 
-### Setup
-
-```bash
-npm install
-```
-
-### Local Development
-
-```bash
-npm start
-```
-
-### Build
-
-```bash
-npm run build
-```
-
-### Deploy to Cloudflare Workers
-
-```bash
-npm run deploy
-```
-
-## Tech Stack
-
-- React 18
-- TypeScript
-- Material-UI
-- Cloudflare Workers
+MIT
