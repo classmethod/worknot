@@ -24,9 +24,9 @@ function getId(url: string): string {
   try {
     const id = new URL(url).pathname.slice(-32);
     if (id.match(/[0-9a-f]{32}/)) return id;
-    return '';
+    return "";
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -42,8 +42,8 @@ export default function code(data: CodeData): string {
     customCss,
     optionImage,
   } = data;
-  let url = myDomain.replace('https://', '').replace('http://', '');
-  if (url.slice(-1) === '/') url = url.slice(0, url.length - 1);
+  let url = myDomain.replace("https://", "").replace("http://", "");
+  if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
 
   return `  /* CONFIGURATION STARTS HERE */
 
@@ -58,37 +58,37 @@ export default function code(data: CodeData): string {
   const SLUG_TO_PAGE = {
     '': '${getId(notionUrl)}',
 ${slugs
-    .map(([pageUrl, notionPageUrl]) => {
-      const id = getId(notionPageUrl);
-      if (!id || !pageUrl) return '';
-      return `    '${pageUrl}': '${id}',\n`;
-    })
-    .join('')}  };
+  .map(([pageUrl, notionPageUrl]) => {
+    const id = getId(notionPageUrl);
+    if (!id || !pageUrl) return "";
+    return `    '${pageUrl}': '${id}',\n`;
+  })
+  .join("")}  };
 
   /* Step 3: enter your page title and description for SEO purposes */
-  const PAGE_TITLE = '${pageTitle || ''}';
-  const PAGE_DESCRIPTION = '${pageDescription || ''}';
+  const PAGE_TITLE = '${pageTitle || ""}';
+  const PAGE_DESCRIPTION = '${pageDescription || ""}';
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
-  const GOOGLE_FONT = '${googleFont || ''}';
+  const GOOGLE_FONT = '${googleFont || ""}';
 
   /* Step 5: enter any custom scripts and styles you'd like */
-  const CUSTOM_SCRIPT = \`${customScript || ''}\`;
-  const CUSTOM_CSS = \`${customCss || ''}\`;
+  const CUSTOM_SCRIPT = \`${customScript || ""}\`;
+  const CUSTOM_CSS = \`${customCss || ""}\`;
 
   /*
    * Step 6: enter your preference of image optimization
    * You can choose from none or resize
    * Polish cannnot be chosen at the moment
    */
-  const IMAGE_OPTIMIZATION = \`${optionImage.imageResizeType || ''}\`;
+  const IMAGE_OPTIMIZATION = \`${optionImage.imageResizeType || ""}\`;
   //If you choose 'resize' above, please configure the details
   const IMAGE_RESIZE_OPTIONS = {
     width: ${optionImage.imageWidth ? Math.trunc(optionImage.imageWidth) : "''"},
     height: ${optionImage.imageHeight ? Math.trunc(optionImage.imageHeight) : "''"},
     quality: ${optionImage.imageQuality ? Math.trunc(optionImage.imageQuality) : "''"},
-    format: '${optionImage.imageFormat || ''}',
-    fit: '${optionImage.imageFit || ''}',
+    format: '${optionImage.imageFormat || ""}',
+    fit: '${optionImage.imageFit || ""}',
     blur: ${optionImage.imageBlur || 0}
   };
 
@@ -174,10 +174,33 @@ ${slugs
       response = new Response(body.replace(/www.notion.so/g, MY_DOMAIN).replace(/notion.so/g, MY_DOMAIN), response);
       response.headers.set('Content-Type', 'application/x-javascript');
       return response;
-    } else if ((url.pathname.startsWith('/api'))) {
-      // Forward API
+    } else if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
+      // Block getPublicPageData to prevent redirect to notion.site
+      return new Response('{}', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } else if (url.pathname.startsWith('/api/v3/syncRecordValuesMain')) {
+      // Rewrite domain info in syncRecordValuesMain response to prevent redirect
       response = await fetch(url.toString(), {
-        body: url.pathname.startsWith('/api/v3/getPublicPageData') ? null : request.body,
+        body: request.body,
+        headers: {
+          'content-type': 'application/json;charset=UTF-8',
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36'
+        },
+        method: 'POST',
+      });
+      let body = await response.text();
+      body = body.replace(/[a-z0-9-]+\\.notion\\.site/g, MY_DOMAIN);
+      response = new Response(body, response);
+      response.headers.set('Access-Control-Allow-Origin', '*');
+      return response;
+    } else if ((url.pathname.startsWith('/api'))) {
+      // Forward other API requests
+      response = await fetch(url.toString(), {
+        body: request.body,
         headers: {
           'content-type': 'application/json;charset=UTF-8',
           'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36'
