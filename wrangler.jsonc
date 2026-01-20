@@ -1,0 +1,8 @@
+{
+  "name": "worknot",
+  "account_id": "172411ba14a3cd8e6dce641de0152c07",
+  "compatibility_date": "2025-01-20",
+  "assets": {
+    "directory": "./build",
+  },
+}
