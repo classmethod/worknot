@@ -7,26 +7,35 @@ const DEFAULT_DOMAIN = "worknot.classmethod.cf";
 const DEFAULT_NOTION_URL =
   "https://succinct-scar-f20.notion.site/Sample-Web-Site-148f2fc322e74473a91fb4d90836e3ce";
 
-function validDomain(domain: string): RegExpMatchArray | null {
-  return domain.match(
-    /^((https:\/\/)|(http:\/\/))?[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9](?:\.[a-zA-Z]{2,})+(\/)?$/
-  );
+const DOMAIN_PATTERN = /^((https:\/\/)|(http:\/\/))?[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9](?:\.[a-zA-Z]{2,})+(\/)?$/;
+const NOTION_ID_PATTERN = /[0-9a-f]{32}/;
+
+function isValidDomain(domain: string): boolean {
+  return DOMAIN_PATTERN.test(domain);
 }
 
-function validNotionUrl(url: string): boolean {
+function isValidNotionUrl(url: string): boolean {
   if (!url) return true;
   try {
     const link = new URL(url);
-    return (
-      (link.hostname.endsWith("notion.so") || link.hostname.endsWith("notion.site")) &&
-      !!link.pathname.slice(-32).match(/[0-9a-f]{32}/)
-    );
+    const isNotionHost = link.hostname.endsWith("notion.so") || link.hostname.endsWith("notion.site");
+    const hasValidId = NOTION_ID_PATTERN.test(link.pathname.slice(-32));
+    return isNotionHost && hasValidId;
   } catch {
     return false;
   }
 }
 
 type SlugPair = [string, string];
+
+function updateSlugAtIndex(slugs: SlugPair[], index: number, position: 0 | 1, value: string): SlugPair[] {
+  return slugs.map((slug, i) => {
+    if (i !== index) return slug;
+    const updated: SlugPair = [...slug];
+    updated[position] = value;
+    return updated;
+  });
+}
 
 export default function App() {
   const [slugs, setSlugs] = useState<SlugPair[]>([]);
@@ -42,94 +51,81 @@ export default function App() {
   const [optionalImageResize, setOptionalImageResize] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const handleMyDomain = (e: ChangeEvent<HTMLInputElement>) => {
-    setMyDomain(e.target.value);
-    setCopied(false);
-  };
-  const handleNotionUrl = (e: ChangeEvent<HTMLInputElement>) => {
-    setNotionUrl(e.target.value);
-    setCopied(false);
-  };
-  const handlePageTitle = (e: ChangeEvent<HTMLInputElement>) => {
-    setPageTitle(e.target.value);
-    setCopied(false);
-  };
-  const handlePageDescription = (e: ChangeEvent<HTMLInputElement>) => {
-    setPageDescription(e.target.value);
-    setCopied(false);
-  };
-  const handleGoogleFont = (e: ChangeEvent<HTMLInputElement>) => {
-    setGoogleFont(e.target.value);
-    setCopied(false);
-  };
-  const handleCustomScript = (e: ChangeEvent<HTMLInputElement>) => {
-    setCustomScript(e.target.value);
-    setCopied(false);
-  };
-  const handleCustomCss = (e: ChangeEvent<HTMLInputElement>) => {
-    setCustomCss(e.target.value);
-    setCopied(false);
-  };
-  const addSlug = () => {
+  function createInputHandler<T>(setter: React.Dispatch<React.SetStateAction<T>>) {
+    return (e: ChangeEvent<HTMLInputElement>) => {
+      setter(e.target.value as T);
+      setCopied(false);
+    };
+  }
+
+  const handleMyDomain = createInputHandler(setMyDomain);
+  const handleNotionUrl = createInputHandler(setNotionUrl);
+  const handlePageTitle = createInputHandler(setPageTitle);
+  const handlePageDescription = createInputHandler(setPageDescription);
+  const handleGoogleFont = createInputHandler(setGoogleFont);
+  const handleCustomScript = createInputHandler(setCustomScript);
+  const handleCustomCss = createInputHandler(setCustomCss);
+
+  function addSlug(): void {
     setSlugs([...slugs, ["", ""]]);
     setCopied(false);
-  };
-  const deleteSlug = (index: number) => {
-    setSlugs([...slugs.slice(0, index), ...slugs.slice(index + 1)]);
+  }
+
+  function deleteSlug(index: number): void {
+    setSlugs(slugs.filter((_, i) => i !== index));
     setCopied(false);
-  };
-  const handleCustomURL = (value: string, index: number) => {
-    setSlugs([
-      ...slugs.slice(0, index),
-      [value, slugs[index][1]],
-      ...slugs.slice(index + 1)
-    ]);
+  }
+
+  function handleCustomURL(value: string, index: number): void {
+    setSlugs(updateSlugAtIndex(slugs, index, 0, value));
     setCopied(false);
-  };
-  const handleNotionPageURL = (value: string, index: number) => {
-    setSlugs([
-      ...slugs.slice(0, index),
-      [slugs[index][0], value],
-      ...slugs.slice(index + 1)
-    ]);
+  }
+
+  function handleNotionPageURL(value: string, index: number): void {
+    setSlugs(updateSlugAtIndex(slugs, index, 1, value));
     setCopied(false);
-  };
-  const handleOptional = () => {
+  }
+
+  function handleOptional(): void {
     setOptional(!optional);
-  };
+  }
 
-  const handleImageOption = (target: EventTarget & (HTMLInputElement | HTMLTextAreaElement)) => {
-    let formValue: string | number = target.value;
+  function clampValue(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function handleImageOption(target: EventTarget & (HTMLInputElement | HTMLTextAreaElement)): void {
     const name = target.name as keyof ImageOptions;
+    let formValue: string | number = target.value;
 
-    if (name === 'imageResizeType') {
-      setOptionalImageResize(target.value === 'resize');
-    } else if (name === 'imageQuality') {
-      const num = Number(formValue);
-      if (num > 100) formValue = 100;
-      if (num < 0) formValue = 1;
-    } else if (name === 'imageBlur') {
-      const num = Number(formValue);
-      if (num > 250) formValue = 250;
-      if (num < 0) formValue = 0;
+    switch (name) {
+      case 'imageResizeType':
+        setOptionalImageResize(target.value === 'resize');
+        break;
+      case 'imageQuality':
+        formValue = clampValue(Number(formValue), 1, 100);
+        break;
+      case 'imageBlur':
+        formValue = clampValue(Number(formValue), 0, 250);
+        break;
     }
 
     setOptionImage({ ...optionImage, [name]: formValue });
     setCopied(false);
-  };
+  }
 
-  const handleSelectChange = (e: SelectChangeEvent<string>) => {
+  function handleSelectChange(e: SelectChangeEvent<string>): void {
     const name = e.target.name as keyof ImageOptions;
     setOptionImage({ ...optionImage, [name]: e.target.value });
     setCopied(false);
-  };
+  }
 
   const domain = myDomain || DEFAULT_DOMAIN;
   const url = notionUrl || DEFAULT_NOTION_URL;
-  const myDomainHelperText = !validDomain(domain)
+  const myDomainHelperText = !isValidDomain(domain)
     ? "Please enter a valid domain"
     : undefined;
-  const notionUrlHelperText = !validNotionUrl(notionUrl)
+  const notionUrlHelperText = !isValidNotionUrl(notionUrl)
     ? "Please enter a valid Notion Page URL"
     : undefined;
   const noError = !myDomainHelperText && !notionUrlHelperText;
@@ -149,12 +145,12 @@ export default function App() {
   const script = noError ? code(codeData) : undefined;
   const textarea = useRef<HTMLTextAreaElement>(null);
 
-  const copy = () => {
+  function copyToClipboard(): void {
     if (!noError || !textarea.current) return;
     textarea.current.select();
     document.execCommand("copy");
     setCopied(true);
-  };
+  }
 
   return (
     <Container maxWidth="md">
@@ -394,7 +390,7 @@ export default function App() {
           variant="contained"
           color="primary"
           disableElevation
-          onClick={copy}
+          onClick={copyToClipboard}
         >
           {copied ? "Copied!" : "Copy the code"}
         </Button>
