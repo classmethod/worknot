@@ -31,6 +31,8 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
   Settings as SettingsIcon,
+  Update as UpdateIcon,
+  Verified as VerifiedIcon,
 } from "@mui/icons-material";
 import code, { CodeData, ImageOptions } from "./code";
 import "./styles.css";
@@ -259,15 +261,34 @@ export default function App() {
           maxWidth="md"
           sx={{ position: "relative", textAlign: "center" }}
         >
-          <Chip
-            label="Powered by Cloudflare Workers"
-            sx={{
-              backgroundColor: "rgba(255,255,255,0.2)",
-              color: "white",
-              mb: 3,
-              fontWeight: 500,
-            }}
-          />
+          <Stack
+            direction="row"
+            spacing={1}
+            justifyContent="center"
+            sx={{ mb: 3 }}
+          >
+            <Chip
+              label="Powered by Cloudflare Workers"
+              sx={{
+                backgroundColor: "rgba(255,255,255,0.2)",
+                color: "white",
+                fontWeight: 500,
+              }}
+            />
+            <Chip
+              icon={
+                <VerifiedIcon
+                  sx={{ color: "white !important", fontSize: 16 }}
+                />
+              }
+              label="Maintained by Classmethod"
+              sx={{
+                backgroundColor: "rgba(255,255,255,0.2)",
+                color: "white",
+                fontWeight: 500,
+              }}
+            />
+          </Stack>
           <Typography
             variant="h2"
             component="h1"
@@ -283,16 +304,28 @@ export default function App() {
             variant="h5"
             component="p"
             sx={{
-              mb: 4,
-              opacity: 0.9,
+              mb: 2,
+              opacity: 0.95,
               fontWeight: 400,
+              maxWidth: 700,
+              mx: "auto",
+              lineHeight: 1.6,
+            }}
+          >
+            Host your Notion Site on a custom domain with Cloudflare Workers
+          </Typography>
+          <Typography
+            variant="body1"
+            component="p"
+            sx={{
+              mb: 4,
+              opacity: 0.8,
               maxWidth: 600,
               mx: "auto",
               lineHeight: 1.6,
             }}
           >
-            Transform your Notion pages into a professional website with custom
-            domains
+            Always up-to-date with the latest Notion Site specifications
           </Typography>
         </Container>
       </Box>
@@ -309,7 +342,7 @@ export default function App() {
               gridTemplateColumns: {
                 xs: "1fr",
                 sm: "repeat(2, 1fr)",
-                md: "repeat(4, 1fr)",
+                md: "repeat(3, 1fr)",
               },
               gap: 2,
               mb: 4,
@@ -318,12 +351,17 @@ export default function App() {
             <FeatureCard
               icon={<LanguageIcon sx={{ fontSize: 40 }} />}
               title="Custom Domain"
-              description="Use your own domain for Notion pages"
+              description="Host your Notion Site on your own domain"
+            />
+            <FeatureCard
+              icon={<UpdateIcon sx={{ fontSize: 40 }} />}
+              title="Always Up-to-Date"
+              description="Follows latest Notion Site specifications"
             />
             <FeatureCard
               icon={<SpeedIcon sx={{ fontSize: 40 }} />}
-              title="Fast Delivery"
-              description="Global CDN via Cloudflare edge"
+              title="Global CDN"
+              description="Fast delivery via Cloudflare edge network"
             />
             <FeatureCard
               icon={<ImageIcon sx={{ fontSize: 40 }} />}
@@ -333,7 +371,12 @@ export default function App() {
             <FeatureCard
               icon={<CodeIcon sx={{ fontSize: 40 }} />}
               title="Custom Code"
-              description="Add your own CSS and JavaScript"
+              description="Inject your own CSS and JavaScript"
+            />
+            <FeatureCard
+              icon={<VerifiedIcon sx={{ fontSize: 40 }} />}
+              title="Actively Maintained"
+              description="Maintained by Classmethod"
             />
           </Box>
         </Paper>
@@ -675,8 +718,16 @@ export default function App() {
 
         {/* Footer */}
         <Box sx={{ textAlign: "center", py: 4, color: "text.secondary" }}>
-          <Typography variant="body2">
-            Built with Cloudflare Workers. Fork of{" "}
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Actively maintained by{" "}
+            <Link
+              href="https://classmethod.jp/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Classmethod
+            </Link>{" "}
+            | Fork of{" "}
             <Link
               href="https://fruitionsite.com/"
               target="_blank"
@@ -684,9 +735,8 @@ export default function App() {
             >
               Fruition
             </Link>
-            .
           </Typography>
-          <Typography variant="body2" sx={{ mt: 1 }}>
+          <Typography variant="body2">
             <Link
               href="https://github.com/classmethod/worknot"
               target="_blank"
