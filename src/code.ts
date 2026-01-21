@@ -6,6 +6,8 @@ export interface ImageOptions {
   imageFormat?: string;
   imageFit?: string;
   imageBlur?: number;
+  imageAnim?: boolean;
+  imageMetadata?: string;
 }
 
 export interface CodeData {
@@ -78,18 +80,21 @@ ${slugs
 
   /*
    * Step 6: enter your preference of image optimization
-   * You can choose from none or resize
-   * Polish cannnot be chosen at the moment
+   * Set to 'resize' to enable Cloudflare Image Resizing
+   * Requires Image Resizing to be enabled in Cloudflare dashboard
+   * See: https://developers.cloudflare.com/images/transform-images/transform-via-workers/
    */
   const IMAGE_OPTIMIZATION = \`${optionImage.imageResizeType || ""}\`;
-  //If you choose 'resize' above, please configure the details
+  // If you choose 'resize' above, configure the options below
   const IMAGE_RESIZE_OPTIONS = {
-    width: ${optionImage.imageWidth ? Math.trunc(optionImage.imageWidth) : "''"},
-    height: ${optionImage.imageHeight ? Math.trunc(optionImage.imageHeight) : "''"},
-    quality: ${optionImage.imageQuality ? Math.trunc(optionImage.imageQuality) : "''"},
-    format: '${optionImage.imageFormat || ""}',
-    fit: '${optionImage.imageFit || ""}',
-    blur: ${optionImage.imageBlur || 0}
+    width: ${optionImage.imageWidth ? Math.trunc(optionImage.imageWidth) : "undefined"},
+    height: ${optionImage.imageHeight ? Math.trunc(optionImage.imageHeight) : "undefined"},
+    quality: ${optionImage.imageQuality ? Math.trunc(optionImage.imageQuality) : "undefined"},
+    format: '${optionImage.imageFormat || "auto"}',
+    fit: '${optionImage.imageFit || "scale-down"}',
+    blur: ${optionImage.imageBlur || "undefined"},
+    anim: ${optionImage.imageAnim === false ? "false" : "true"},
+    metadata: '${optionImage.imageMetadata || "none"}'
   };
 
   /* CONFIGURATION ENDS HERE */
@@ -110,10 +115,18 @@ ${slugs
 
   function rewriteImageOptions() {
     let options = {cf:{}};
-    if (IMAGE_OPTIMIZATION === 'polish') {
-      options.cf.polish = 'lossy';
-    } else if (IMAGE_OPTIMIZATION === 'resize') {
-      options.cf.image = IMAGE_RESIZE_OPTIONS;
+    if (IMAGE_OPTIMIZATION === 'resize') {
+      // Build image options, excluding undefined values
+      const imageOpts = {};
+      if (IMAGE_RESIZE_OPTIONS.width !== undefined) imageOpts.width = IMAGE_RESIZE_OPTIONS.width;
+      if (IMAGE_RESIZE_OPTIONS.height !== undefined) imageOpts.height = IMAGE_RESIZE_OPTIONS.height;
+      if (IMAGE_RESIZE_OPTIONS.quality !== undefined) imageOpts.quality = IMAGE_RESIZE_OPTIONS.quality;
+      if (IMAGE_RESIZE_OPTIONS.format && IMAGE_RESIZE_OPTIONS.format !== '') imageOpts.format = IMAGE_RESIZE_OPTIONS.format;
+      if (IMAGE_RESIZE_OPTIONS.fit && IMAGE_RESIZE_OPTIONS.fit !== '') imageOpts.fit = IMAGE_RESIZE_OPTIONS.fit;
+      if (IMAGE_RESIZE_OPTIONS.blur !== undefined) imageOpts.blur = IMAGE_RESIZE_OPTIONS.blur;
+      if (IMAGE_RESIZE_OPTIONS.anim !== undefined) imageOpts.anim = IMAGE_RESIZE_OPTIONS.anim;
+      if (IMAGE_RESIZE_OPTIONS.metadata && IMAGE_RESIZE_OPTIONS.metadata !== '') imageOpts.metadata = IMAGE_RESIZE_OPTIONS.metadata;
+      options.cf.image = imageOpts;
     }
     return options;
   }
