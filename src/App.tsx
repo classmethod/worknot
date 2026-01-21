@@ -627,9 +627,11 @@ export default function App() {
                     value={optionImage.imageFormat ?? ""}
                     onChange={handleSelectChange}
                   >
+                    <MenuItem value="auto">auto (recommended)</MenuItem>
                     <MenuItem value="avif">avif</MenuItem>
                     <MenuItem value="webp">webp</MenuItem>
-                    <MenuItem value="json">json</MenuItem>
+                    <MenuItem value="jpeg">jpeg</MenuItem>
+                    <MenuItem value="png">png</MenuItem>
                   </Select>
                 </FormControl>
                 <FormControl
@@ -664,15 +666,60 @@ export default function App() {
                   size="small"
                   sx={{ m: 0.5, width: "12ch" }}
                 />
+                <FormControl
+                  variant="filled"
+                  size="small"
+                  sx={{ m: 0.5, minWidth: "18ch" }}
+                >
+                  <InputLabel id="imageMetadataLabel">Metadata</InputLabel>
+                  <Select
+                    labelId="imageMetadataLabel"
+                    label="Metadata"
+                    name="imageMetadata"
+                    value={optionImage.imageMetadata ?? ""}
+                    onChange={handleSelectChange}
+                  >
+                    <MenuItem value="none">none (default)</MenuItem>
+                    <MenuItem value="keep">keep</MenuItem>
+                    <MenuItem value="copyright">copyright</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControlLabel
+                  control={
+                    <Radio
+                      checked={optionImage.imageAnim !== false}
+                      onChange={() => {
+                        setOptionImage({ ...optionImage, imageAnim: true });
+                        setCopied(false);
+                      }}
+                      size="small"
+                    />
+                  }
+                  label="Anim: On"
+                  sx={{ ml: 1 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Radio
+                      checked={optionImage.imageAnim === false}
+                      onChange={() => {
+                        setOptionImage({ ...optionImage, imageAnim: false });
+                        setCopied(false);
+                      }}
+                      size="small"
+                    />
+                  }
+                  label="Anim: Off"
+                />
               </Box>
               <Alert severity="info" sx={{ mt: 2 }}>
                 Enable{" "}
                 <Link
-                  href="https://developers.cloudflare.com/images/image-resizing/enable-image-resizing/"
+                  href="https://developers.cloudflare.com/images/transform-images/"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Image Resizing
+                  Image Transformations
                 </Link>{" "}
                 in your Cloudflare dashboard to use this feature.
               </Alert>
