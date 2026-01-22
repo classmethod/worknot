@@ -42,6 +42,7 @@ import code, {
   PageMetadata,
   StructuredDataOptions,
   BrandingOptions,
+  SocialPreviewOptions,
   SeoOptions,
   AnalyticsOptions,
   CachingOptions,
@@ -154,6 +155,13 @@ export default function App() {
     brandReplacement: "",
     twitterHandle: "",
     faviconUrl: "",
+  });
+  const [socialPreview, setSocialPreview] = useState<SocialPreviewOptions>({
+    defaultImage: "",
+    imageWidth: 1200,
+    imageHeight: 630,
+    twitterCardType: "summary_large_image",
+    locale: "",
   });
   const [seo, setSeo] = useState<SeoOptions>({
     aiAttribution: "",
@@ -274,6 +282,17 @@ export default function App() {
   ): void {
     setBranding({
       ...branding,
+      [field]: value,
+    });
+    setCopied(false);
+  }
+
+  function handleSocialPreviewChange(
+    field: keyof SocialPreviewOptions,
+    value: string | number,
+  ): void {
+    setSocialPreview({
+      ...socialPreview,
       [field]: value,
     });
     setCopied(false);
@@ -442,6 +461,7 @@ export default function App() {
     pageMetadata,
     structuredData,
     branding,
+    socialPreview,
     seo,
     analytics,
     caching,
@@ -925,6 +945,99 @@ export default function App() {
                     handleBrandingChange("faviconUrl", e.target.value)
                   }
                   value={branding.faviconUrl}
+                  variant="outlined"
+                  size="small"
+                />
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                >
+                  Social Preview
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Default OG Image URL"
+                  margin="dense"
+                  placeholder="https://example.com/og-image.jpg"
+                  helperText="Fallback image for pages without a specific OG image"
+                  onChange={(e) =>
+                    handleSocialPreviewChange("defaultImage", e.target.value)
+                  }
+                  value={socialPreview.defaultImage}
+                  variant="outlined"
+                  size="small"
+                />
+                <Stack direction="row" spacing={2}>
+                  <TextField
+                    type="number"
+                    label="Image Width"
+                    margin="dense"
+                    placeholder="1200"
+                    helperText="og:image:width"
+                    onChange={(e) =>
+                      handleSocialPreviewChange(
+                        "imageWidth",
+                        Number(e.target.value),
+                      )
+                    }
+                    value={socialPreview.imageWidth}
+                    variant="outlined"
+                    size="small"
+                    sx={{ flex: 1 }}
+                  />
+                  <TextField
+                    type="number"
+                    label="Image Height"
+                    margin="dense"
+                    placeholder="630"
+                    helperText="og:image:height"
+                    onChange={(e) =>
+                      handleSocialPreviewChange(
+                        "imageHeight",
+                        Number(e.target.value),
+                      )
+                    }
+                    value={socialPreview.imageHeight}
+                    variant="outlined"
+                    size="small"
+                    sx={{ flex: 1 }}
+                  />
+                </Stack>
+                <FormControl fullWidth size="small" margin="dense">
+                  <InputLabel id="twitterCardTypeLabel">
+                    Twitter Card Type
+                  </InputLabel>
+                  <Select
+                    labelId="twitterCardTypeLabel"
+                    label="Twitter Card Type"
+                    value={socialPreview.twitterCardType}
+                    onChange={(e) =>
+                      handleSocialPreviewChange(
+                        "twitterCardType",
+                        e.target.value,
+                      )
+                    }
+                  >
+                    <MenuItem value="summary_large_image">
+                      summary_large_image (recommended)
+                    </MenuItem>
+                    <MenuItem value="summary">summary</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField
+                  fullWidth
+                  label="Locale"
+                  margin="dense"
+                  placeholder="en_US, ja_JP, etc."
+                  helperText="og:locale for language targeting"
+                  onChange={(e) =>
+                    handleSocialPreviewChange("locale", e.target.value)
+                  }
+                  value={socialPreview.locale}
                   variant="outlined"
                   size="small"
                 />
