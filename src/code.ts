@@ -23,6 +23,12 @@ export interface StructuredDataOptions {
   logoUrl?: string;
 }
 
+export interface BrandingOptions {
+  siteName?: string;
+  brandReplacement?: string;
+  twitterHandle?: string;
+}
+
 export interface CodeData {
   myDomain: string;
   notionUrl: string;
@@ -35,6 +41,7 @@ export interface CodeData {
   optionImage: ImageOptions;
   pageMetadata: Record<string, PageMetadata>;
   structuredData: StructuredDataOptions;
+  branding: BrandingOptions;
 }
 
 function getId(url: string): string {
@@ -60,6 +67,7 @@ export default function code(data: CodeData): string {
     optionImage,
     pageMetadata,
     structuredData,
+    branding,
   } = data;
   let url = myDomain.replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
@@ -102,6 +110,14 @@ ${slugs
   const SCHEMA_TYPE = '${structuredData?.schemaType || "WebPage"}';
   const ORGANIZATION_NAME = '${structuredData?.organizationName || ""}';
   const LOGO_URL = '${structuredData?.logoUrl || ""}';
+
+  /*
+   * Step 3.3: branding configuration (optional)
+   * Replace Notion branding with your own and add social media handles
+   */
+  const SITE_NAME = '${branding?.siteName || ""}';
+  const BRAND_REPLACEMENT = '${branding?.brandReplacement || ""}';
+  const TWITTER_HANDLE = '${branding?.twitterHandle || ""}';
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
   const GOOGLE_FONT = '${googleFont || ""}';
@@ -355,9 +371,19 @@ ${slugs
           return;
         }
       }
-      if (MY_DOMAIN !== '') {
-        if (element.getAttribute('property') === 'og:site_name') {
+      // Set og:site_name - use SITE_NAME if configured, otherwise MY_DOMAIN (Issue #18)
+      if (element.getAttribute('property') === 'og:site_name') {
+        if (SITE_NAME !== '') {
+          element.setAttribute('content', SITE_NAME);
+        } else if (MY_DOMAIN !== '') {
           element.setAttribute('content', MY_DOMAIN);
+        }
+      }
+      // Replace 'Notion' branding in meta content (Issue #18)
+      if (BRAND_REPLACEMENT !== '') {
+        const content = element.getAttribute('content');
+        if (content && content.includes('Notion')) {
+          element.setAttribute('content', content.replace(/Notion/g, BRAND_REPLACEMENT));
         }
       }
       if (pageTitle !== '') {
@@ -404,6 +430,12 @@ ${slugs
       const canonicalUrl = 'https://' + MY_DOMAIN + (this.slug ? '/' + this.slug : '');
       element.append(\`<link rel="canonical" href="\${canonicalUrl}">\`, { html: true });
       element.append(\`<meta name="robots" content="index, follow">\`, { html: true });
+
+      // Add Twitter/X meta tags for social cards (Issue #19)
+      if (TWITTER_HANDLE !== '') {
+        element.append(\`<meta name="twitter:site" content="\${TWITTER_HANDLE}">\`, { html: true });
+        element.append(\`<meta name="twitter:creator" content="\${TWITTER_HANDLE}">\`, { html: true });
+      }
 
       // Add JSON-LD structured data for rich search results (Issue #10)
       if (STRUCTURED_DATA_ENABLED) {
