@@ -46,6 +46,7 @@ import code, {
   AnalyticsOptions,
   CustomHtmlOptions,
   Custom404Options,
+  SubdomainRedirect,
 } from "./code";
 import "./styles.css";
 
@@ -167,6 +168,9 @@ export default function App() {
   const [custom404, setCustom404] = useState<Custom404Options>({
     notionUrl: "",
   });
+  const [subdomainRedirects, setSubdomainRedirects] = useState<
+    SubdomainRedirect[]
+  >([]);
 
   function createInputHandler<T>(
     setter: React.Dispatch<React.SetStateAction<T>>,
@@ -306,6 +310,32 @@ export default function App() {
     setCopied(false);
   }
 
+  function addSubdomainRedirect(): void {
+    setSubdomainRedirects([
+      ...subdomainRedirects,
+      { subdomain: "", redirectUrl: "" },
+    ]);
+    setCopied(false);
+  }
+
+  function deleteSubdomainRedirect(index: number): void {
+    setSubdomainRedirects(subdomainRedirects.filter((_, i) => i !== index));
+    setCopied(false);
+  }
+
+  function handleSubdomainRedirectChange(
+    index: number,
+    field: keyof SubdomainRedirect,
+    value: string,
+  ): void {
+    setSubdomainRedirects(
+      subdomainRedirects.map((redirect, i) =>
+        i === index ? { ...redirect, [field]: value } : redirect,
+      ),
+    );
+    setCopied(false);
+  }
+
   function toggleSlugMetadata(index: number): void {
     setSlugMetadataExpanded({
       ...slugMetadataExpanded,
@@ -372,6 +402,7 @@ export default function App() {
     analytics,
     customHtml,
     custom404,
+    subdomainRedirects,
   };
 
   const script = noError ? code(codeData) : undefined;
@@ -948,6 +979,81 @@ export default function App() {
                   variant="outlined"
                   size="small"
                 />
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                >
+                  Subdomain Redirects
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Redirect subdomains (e.g., www) to the main domain or other
+                  URLs
+                </Typography>
+                {subdomainRedirects.map((redirect, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      mt: 1,
+                      p: 1.5,
+                      backgroundColor: "grey.100",
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Stack direction="row" spacing={1} alignItems="flex-start">
+                      <TextField
+                        label="Subdomain"
+                        placeholder="www"
+                        value={redirect.subdomain}
+                        onChange={(e) =>
+                          handleSubdomainRedirectChange(
+                            index,
+                            "subdomain",
+                            e.target.value,
+                          )
+                        }
+                        variant="outlined"
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        label="Redirect URL"
+                        placeholder={`https://${domain}`}
+                        value={redirect.redirectUrl}
+                        onChange={(e) =>
+                          handleSubdomainRedirectChange(
+                            index,
+                            "redirectUrl",
+                            e.target.value,
+                          )
+                        }
+                        variant="outlined"
+                        size="small"
+                        sx={{ flex: 2 }}
+                      />
+                      <Button
+                        onClick={() => deleteSubdomainRedirect(index)}
+                        color="error"
+                        size="small"
+                        sx={{ minWidth: "auto", px: 1 }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </Button>
+                    </Stack>
+                  </Box>
+                ))}
+                <Button
+                  onClick={addSubdomainRedirect}
+                  size="small"
+                  variant="text"
+                  startIcon={<AddIcon />}
+                  sx={{ mt: 1 }}
+                >
+                  Add Redirect
+                </Button>
               </Box>
 
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>

@@ -46,6 +46,11 @@ export interface Custom404Options {
   notionUrl?: string;
 }
 
+export interface SubdomainRedirect {
+  subdomain: string;
+  redirectUrl: string;
+}
+
 export interface CodeData {
   myDomain: string;
   notionUrl: string;
@@ -63,6 +68,7 @@ export interface CodeData {
   analytics: AnalyticsOptions;
   customHtml: CustomHtmlOptions;
   custom404: Custom404Options;
+  subdomainRedirects: SubdomainRedirect[];
 }
 
 function getId(url: string): string {
@@ -93,6 +99,7 @@ export default function code(data: CodeData): string {
     analytics,
     customHtml,
     custom404,
+    subdomainRedirects,
   } = data;
   let url = myDomain.replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
@@ -168,6 +175,18 @@ ${slugs
    * Specify a Notion page ID to display when a page is not found
    */
   const CUSTOM_404_PAGE_ID = '${custom404?.notionUrl ? getId(custom404.notionUrl) : ""}';
+
+  /*
+   * Step 3.7: subdomain redirect configuration (optional)
+   * Redirect subdomains (e.g., www) to the main domain or other URLs
+   */
+  const SUBDOMAIN_REDIRECTS = {
+${
+  subdomainRedirects
+    ?.filter((r) => r.subdomain && r.redirectUrl)
+    .map((r) => `    '${r.subdomain}': '${r.redirectUrl}',\n`)
+    .join("") || ""
+}  };
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
   const GOOGLE_FONT = '${googleFont || ""}';
@@ -288,6 +307,22 @@ ${slugs
       return handleOptions(request);
     }
     let url = new URL(request.url);
+
+    // Handle subdomain redirects (Issue #15)
+    const hostname = url.hostname;
+    const domainParts = MY_DOMAIN.split('.');
+    const hostParts = hostname.split('.');
+    // Check if the request is for a subdomain of the main domain
+    if (hostParts.length > domainParts.length) {
+      const subdomain = hostParts.slice(0, hostParts.length - domainParts.length).join('.');
+      const mainDomainFromHost = hostParts.slice(hostParts.length - domainParts.length).join('.');
+      if (mainDomainFromHost === MY_DOMAIN && SUBDOMAIN_REDIRECTS[subdomain]) {
+        const redirectBase = SUBDOMAIN_REDIRECTS[subdomain];
+        const redirectUrl = redirectBase + url.pathname + url.search;
+        return Response.redirect(redirectUrl, 301);
+      }
+    }
+
     // Use the original Notion site domain instead of www.notion.so
     url.hostname = NOTION_SITE_DOMAIN;
     if (url.pathname === '/robots.txt') {
