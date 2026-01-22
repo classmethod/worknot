@@ -30,6 +30,14 @@ export interface BrandingOptions {
   faviconUrl?: string;
 }
 
+export interface SocialPreviewOptions {
+  defaultImage?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  twitterCardType?: "summary" | "summary_large_image";
+  locale?: string;
+}
+
 export interface SeoOptions {
   aiAttribution?: string;
 }
@@ -64,6 +72,7 @@ export interface CodeData {
   pageMetadata: Record<string, PageMetadata>;
   structuredData: StructuredDataOptions;
   branding: BrandingOptions;
+  socialPreview: SocialPreviewOptions;
   seo: SeoOptions;
   analytics: AnalyticsOptions;
   customHtml: CustomHtmlOptions;
@@ -95,6 +104,7 @@ export default function code(data: CodeData): string {
     pageMetadata,
     structuredData,
     branding,
+    socialPreview,
     seo,
     analytics,
     customHtml,
@@ -151,6 +161,16 @@ ${slugs
   const BRAND_REPLACEMENT = '${branding?.brandReplacement || ""}';
   const TWITTER_HANDLE = '${branding?.twitterHandle || ""}';
   const FAVICON_URL = '${branding?.faviconUrl || ""}';
+
+  /*
+   * Step 3.3.1: social preview configuration (optional)
+   * Enhance Open Graph and Twitter Card meta tags for better link previews
+   */
+  const DEFAULT_OG_IMAGE = '${socialPreview?.defaultImage || ""}';
+  const OG_IMAGE_WIDTH = ${socialPreview?.imageWidth || 1200};
+  const OG_IMAGE_HEIGHT = ${socialPreview?.imageHeight || 630};
+  const TWITTER_CARD_TYPE = '${socialPreview?.twitterCardType || "summary_large_image"}';
+  const OG_LOCALE = '${socialPreview?.locale || ""}';
 
   /*
    * Step 3.4: SEO configuration (optional)
@@ -506,10 +526,11 @@ ${
           element.setAttribute('content', pageDescription);
         }
       }
-      // Set custom OG image if specified (Issue #11)
-      if (ogImage && (element.getAttribute('property') === 'og:image'
+      // Set custom OG image if specified, fallback to default (Issue #11, #34)
+      const effectiveOgImage = ogImage || DEFAULT_OG_IMAGE;
+      if (effectiveOgImage && (element.getAttribute('property') === 'og:image'
         || element.getAttribute('name') === 'twitter:image')) {
-        element.setAttribute('content', ogImage);
+        element.setAttribute('content', effectiveOgImage);
       }
       // Set canonical URL for og:url and twitter:url (Issue #9)
       if (element.getAttribute('property') === 'og:url'
@@ -569,6 +590,22 @@ ${
       if (TWITTER_HANDLE !== '') {
         element.append(\`<meta name="twitter:site" content="\${TWITTER_HANDLE}">\`, { html: true });
         element.append(\`<meta name="twitter:creator" content="\${TWITTER_HANDLE}">\`, { html: true });
+      }
+
+      // Add enhanced Open Graph and Twitter Card tags (Issue #34)
+      element.append(\`<meta property="og:type" content="website">\`, { html: true });
+      element.append(\`<meta name="twitter:card" content="\${TWITTER_CARD_TYPE}">\`, { html: true });
+
+      // Add OG image dimensions if image is set
+      const effectiveOgImage = this.metadata.ogImage || DEFAULT_OG_IMAGE;
+      if (effectiveOgImage) {
+        element.append(\`<meta property="og:image:width" content="\${OG_IMAGE_WIDTH}">\`, { html: true });
+        element.append(\`<meta property="og:image:height" content="\${OG_IMAGE_HEIGHT}">\`, { html: true });
+      }
+
+      // Add locale if configured
+      if (OG_LOCALE !== '') {
+        element.append(\`<meta property="og:locale" content="\${OG_LOCALE}">\`, { html: true });
       }
 
       // Add AI crawler attribution meta tags (Issue #13)
