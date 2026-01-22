@@ -42,6 +42,9 @@ import code, {
   PageMetadata,
   StructuredDataOptions,
   BrandingOptions,
+  AnalyticsOptions,
+  CustomHtmlOptions,
+  Custom404Options,
 } from "./code";
 import "./styles.css";
 
@@ -146,10 +149,20 @@ export default function App() {
     siteName: "",
     brandReplacement: "",
     twitterHandle: "",
+    faviconUrl: "",
   });
   const [slugMetadataExpanded, setSlugMetadataExpanded] = useState<
     Record<number, boolean>
   >({});
+  const [analytics, setAnalytics] = useState<AnalyticsOptions>({
+    googleTagId: "",
+  });
+  const [customHtml, setCustomHtml] = useState<CustomHtmlOptions>({
+    headerHtml: "",
+  });
+  const [custom404, setCustom404] = useState<Custom404Options>({
+    notionUrl: "",
+  });
 
   function createInputHandler<T>(
     setter: React.Dispatch<React.SetStateAction<T>>,
@@ -248,6 +261,39 @@ export default function App() {
     setCopied(false);
   }
 
+  function handleAnalyticsChange(
+    field: keyof AnalyticsOptions,
+    value: string,
+  ): void {
+    setAnalytics({
+      ...analytics,
+      [field]: value,
+    });
+    setCopied(false);
+  }
+
+  function handleCustomHtmlChange(
+    field: keyof CustomHtmlOptions,
+    value: string,
+  ): void {
+    setCustomHtml({
+      ...customHtml,
+      [field]: value,
+    });
+    setCopied(false);
+  }
+
+  function handleCustom404Change(
+    field: keyof Custom404Options,
+    value: string,
+  ): void {
+    setCustom404({
+      ...custom404,
+      [field]: value,
+    });
+    setCopied(false);
+  }
+
   function toggleSlugMetadata(index: number): void {
     setSlugMetadataExpanded({
       ...slugMetadataExpanded,
@@ -310,6 +356,9 @@ export default function App() {
     pageMetadata,
     structuredData,
     branding,
+    analytics,
+    customHtml,
+    custom404,
   };
 
   const script = noError ? code(codeData) : undefined;
@@ -773,6 +822,93 @@ export default function App() {
                     handleBrandingChange("twitterHandle", e.target.value)
                   }
                   value={branding.twitterHandle}
+                  variant="outlined"
+                  size="small"
+                />
+                <TextField
+                  fullWidth
+                  label="Custom Favicon URL"
+                  margin="dense"
+                  placeholder="https://example.com/favicon.ico"
+                  helperText="Replaces Notion's default favicon (.ico, .png, .svg)"
+                  onChange={(e) =>
+                    handleBrandingChange("faviconUrl", e.target.value)
+                  }
+                  value={branding.faviconUrl}
+                  variant="outlined"
+                  size="small"
+                />
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                >
+                  Analytics
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Google Analytics Measurement ID"
+                  margin="dense"
+                  placeholder="G-XXXXXXXXXX"
+                  helperText="Your GA4 Measurement ID for automatic tracking"
+                  onChange={(e) =>
+                    handleAnalyticsChange("googleTagId", e.target.value)
+                  }
+                  value={analytics.googleTagId}
+                  variant="outlined"
+                  size="small"
+                />
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                >
+                  Custom Header HTML
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Header HTML"
+                  margin="dense"
+                  multiline
+                  minRows={3}
+                  placeholder={`<nav class="site-nav">
+  <a href="/">Home</a>
+  <a href="/about">About</a>
+</nav>`}
+                  helperText="HTML injected at the top of page body (e.g., navigation, announcements)"
+                  onChange={(e) =>
+                    handleCustomHtmlChange("headerHtml", e.target.value)
+                  }
+                  value={customHtml.headerHtml}
+                  variant="outlined"
+                  size="small"
+                />
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                >
+                  Custom 404 Page
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="404 Page Notion URL"
+                  margin="dense"
+                  placeholder={DEFAULT_NOTION_URL}
+                  helperText="Notion page to display when a page is not found"
+                  onChange={(e) =>
+                    handleCustom404Change("notionUrl", e.target.value)
+                  }
+                  value={custom404.notionUrl}
                   variant="outlined"
                   size="small"
                 />
