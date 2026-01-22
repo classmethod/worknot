@@ -487,7 +487,7 @@ export default function App() {
                   sx={{ color: "white !important", fontSize: 16 }}
                 />
               }
-              label="Cloudflare & Notion Partner"
+              label="Maintained by Classmethod"
               sx={{
                 backgroundColor: "rgba(255,255,255,0.2)",
                 color: "white",
