@@ -30,6 +30,10 @@ export interface BrandingOptions {
   faviconUrl?: string;
 }
 
+export interface SeoOptions {
+  aiAttribution?: string;
+}
+
 export interface AnalyticsOptions {
   googleTagId?: string;
 }
@@ -55,6 +59,7 @@ export interface CodeData {
   pageMetadata: Record<string, PageMetadata>;
   structuredData: StructuredDataOptions;
   branding: BrandingOptions;
+  seo: SeoOptions;
   analytics: AnalyticsOptions;
   customHtml: CustomHtmlOptions;
   custom404: Custom404Options;
@@ -84,6 +89,7 @@ export default function code(data: CodeData): string {
     pageMetadata,
     structuredData,
     branding,
+    seo,
     analytics,
     customHtml,
     custom404,
@@ -140,19 +146,25 @@ ${slugs
   const FAVICON_URL = '${branding?.faviconUrl || ""}';
 
   /*
-   * Step 3.4: analytics configuration (optional)
+   * Step 3.4: SEO configuration (optional)
+   * AI attribution for proper citation in AI-generated content
+   */
+  const AI_ATTRIBUTION = '${seo?.aiAttribution || ""}';
+
+  /*
+   * Step 3.5: analytics configuration (optional)
    * Add your Google Analytics 4 Measurement ID for built-in tracking
    */
   const GOOGLE_TAG_ID = '${analytics?.googleTagId || ""}';
 
   /*
-   * Step 3.5: custom HTML header injection (optional)
+   * Step 3.6: custom HTML header injection (optional)
    * Add custom HTML to the top of the page body (e.g., navigation, announcements)
    */
   const CUSTOM_HEADER = \`${customHtml?.headerHtml || ""}\`;
 
   /*
-   * Step 3.6: custom 404 page configuration (optional)
+   * Step 3.7: custom 404 page configuration (optional)
    * Specify a Notion page ID to display when a page is not found
    */
   const CUSTOM_404_PAGE_ID = '${custom404?.notionUrl ? getId(custom404.notionUrl) : ""}';
@@ -522,6 +534,12 @@ ${slugs
       if (TWITTER_HANDLE !== '') {
         element.append(\`<meta name="twitter:site" content="\${TWITTER_HANDLE}">\`, { html: true });
         element.append(\`<meta name="twitter:creator" content="\${TWITTER_HANDLE}">\`, { html: true });
+      }
+
+      // Add AI crawler attribution meta tags (Issue #13)
+      if (AI_ATTRIBUTION !== '') {
+        element.append(\`<meta name="ai:source_url" content="\${canonicalUrl}">\`, { html: true });
+        element.append(\`<meta name="ai:source_attribution" content="\${AI_ATTRIBUTION}">\`, { html: true });
       }
 
       // Add JSON-LD structured data for rich search results (Issue #10)
