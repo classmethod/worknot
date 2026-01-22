@@ -1,4 +1,11 @@
-import React, { useState, useRef, ChangeEvent } from "react";
+import {
+  useState,
+  useRef,
+  type ChangeEvent,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import {
   Button,
   Collapse,
@@ -96,7 +103,7 @@ function updateSlugAtIndex(
 }
 
 interface FeatureCardProps {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   description: string;
 }
@@ -125,6 +132,38 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
         {description}
       </Typography>
     </Paper>
+  );
+}
+
+interface SettingsSectionProps {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  isFirst?: boolean;
+}
+
+function SettingsSection({
+  title,
+  subtitle,
+  children,
+  isFirst,
+}: SettingsSectionProps) {
+  return (
+    <Box
+      sx={
+        isFirst ? {} : { mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }
+      }
+    >
+      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+        {title}
+      </Typography>
+      {subtitle && (
+        <Typography variant="caption" color="text.secondary">
+          {subtitle}
+        </Typography>
+      )}
+      {children}
+    </Box>
   );
 }
 
@@ -265,90 +304,30 @@ export default function App() {
     setCopied(false);
   }
 
-  function handleStructuredDataChange(
-    field: keyof StructuredDataOptions,
-    value: string | boolean,
-  ): void {
-    setStructuredData({
-      ...structuredData,
-      [field]: value,
-    });
-    setCopied(false);
+  function createFieldHandler<T>(
+    setter: Dispatch<SetStateAction<T>>,
+    current: T,
+  ) {
+    return <K extends keyof T>(field: K, value: T[K]) => {
+      setter({ ...current, [field]: value });
+      setCopied(false);
+    };
   }
 
-  function handleBrandingChange(
-    field: keyof BrandingOptions,
-    value: string,
-  ): void {
-    setBranding({
-      ...branding,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleSocialPreviewChange(
-    field: keyof SocialPreviewOptions,
-    value: string | number,
-  ): void {
-    setSocialPreview({
-      ...socialPreview,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleSeoChange(field: keyof SeoOptions, value: string): void {
-    setSeo({
-      ...seo,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleAnalyticsChange(
-    field: keyof AnalyticsOptions,
-    value: string,
-  ): void {
-    setAnalytics({
-      ...analytics,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleCachingChange(
-    field: keyof CachingOptions,
-    value: boolean | number,
-  ): void {
-    setCaching({
-      ...caching,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleCustomHtmlChange(
-    field: keyof CustomHtmlOptions,
-    value: string,
-  ): void {
-    setCustomHtml({
-      ...customHtml,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleCustom404Change(
-    field: keyof Custom404Options,
-    value: string,
-  ): void {
-    setCustom404({
-      ...custom404,
-      [field]: value,
-    });
-    setCopied(false);
-  }
+  const handleStructuredDataChange = createFieldHandler(
+    setStructuredData,
+    structuredData,
+  );
+  const handleBrandingChange = createFieldHandler(setBranding, branding);
+  const handleSocialPreviewChange = createFieldHandler(
+    setSocialPreview,
+    socialPreview,
+  );
+  const handleSeoChange = createFieldHandler(setSeo, seo);
+  const handleAnalyticsChange = createFieldHandler(setAnalytics, analytics);
+  const handleCachingChange = createFieldHandler(setCaching, caching);
+  const handleCustomHtmlChange = createFieldHandler(setCustomHtml, customHtml);
+  const handleCustom404Change = createFieldHandler(setCustom404, custom404);
 
   function addSubdomainRedirect(): void {
     setSubdomainRedirects([
