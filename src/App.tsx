@@ -41,6 +41,7 @@ import code, {
   ImageOptions,
   PageMetadata,
   StructuredDataOptions,
+  BrandingOptions,
 } from "./code";
 import "./styles.css";
 
@@ -141,6 +142,11 @@ export default function App() {
     organizationName: "",
     logoUrl: "",
   });
+  const [branding, setBranding] = useState<BrandingOptions>({
+    siteName: "",
+    brandReplacement: "",
+    twitterHandle: "",
+  });
   const [slugMetadataExpanded, setSlugMetadataExpanded] = useState<
     Record<number, boolean>
   >({});
@@ -231,6 +237,17 @@ export default function App() {
     setCopied(false);
   }
 
+  function handleBrandingChange(
+    field: keyof BrandingOptions,
+    value: string,
+  ): void {
+    setBranding({
+      ...branding,
+      [field]: value,
+    });
+    setCopied(false);
+  }
+
   function toggleSlugMetadata(index: number): void {
     setSlugMetadataExpanded({
       ...slugMetadataExpanded,
@@ -292,6 +309,7 @@ export default function App() {
     optionImage,
     pageMetadata,
     structuredData,
+    branding,
   };
 
   const script = noError ? code(codeData) : undefined;
@@ -710,6 +728,55 @@ export default function App() {
                 variant="outlined"
                 size="small"
               />
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                >
+                  Branding & Social
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="Site Name"
+                  margin="dense"
+                  placeholder="My Awesome Site"
+                  helperText="Used for og:site_name meta tag"
+                  onChange={(e) =>
+                    handleBrandingChange("siteName", e.target.value)
+                  }
+                  value={branding.siteName}
+                  variant="outlined"
+                  size="small"
+                />
+                <TextField
+                  fullWidth
+                  label="Brand Replacement"
+                  margin="dense"
+                  placeholder="My Brand"
+                  helperText="Replaces 'Notion' text in meta tags (optional)"
+                  onChange={(e) =>
+                    handleBrandingChange("brandReplacement", e.target.value)
+                  }
+                  value={branding.brandReplacement}
+                  variant="outlined"
+                  size="small"
+                />
+                <TextField
+                  fullWidth
+                  label="Twitter/X Handle"
+                  margin="dense"
+                  placeholder="@username"
+                  helperText="For twitter:site and twitter:creator meta tags"
+                  onChange={(e) =>
+                    handleBrandingChange("twitterHandle", e.target.value)
+                  }
+                  value={branding.twitterHandle}
+                  variant="outlined"
+                  size="small"
+                />
+              </Box>
 
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Stack
