@@ -73,6 +73,13 @@ export interface RedirectRule {
   permanent: boolean;
 }
 
+export interface RssOptions {
+  enabled: boolean;
+  title?: string;
+  description?: string;
+  language?: string;
+}
+
 export interface CodeData {
   myDomain: string;
   notionUrl: string;
@@ -94,6 +101,7 @@ export interface CodeData {
   custom404: Custom404Options;
   subdomainRedirects: SubdomainRedirect[];
   redirectRules: RedirectRule[];
+  rss: RssOptions;
 }
 
 function getId(url: string): string {
@@ -128,6 +136,7 @@ export default function code(data: CodeData): string {
     custom404,
     subdomainRedirects,
     redirectRules,
+    rss,
   } = data;
   let url = myDomain.replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
@@ -251,6 +260,15 @@ ${
     .join("") || ""
 }  ];
 
+  /*
+   * Step 3.9: RSS feed configuration (optional)
+   * Generate an RSS 2.0 feed at /rss.xml for blog-style sites
+   */
+  const RSS_ENABLED = ${rss?.enabled || false};
+  const RSS_TITLE = '${rss?.title || ""}';
+  const RSS_DESCRIPTION = '${rss?.description || ""}';
+  const RSS_LANGUAGE = '${rss?.language || "en-us"}';
+
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
   const GOOGLE_FONT = '${googleFont || ""}';
 
@@ -345,6 +363,48 @@ ${
     return sitemap;
   }
 
+  function generateRssFeed() {
+    const title = RSS_TITLE || MY_DOMAIN;
+    const description = RSS_DESCRIPTION || \`RSS feed for \${MY_DOMAIN}\`;
+    const buildDate = new Date().toUTCString();
+    let rss = '<?xml version="1.0" encoding="UTF-8"?>';
+    rss += '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">';
+    rss += '<channel>';
+    rss += \`<title>\${escapeXml(title)}</title>\`;
+    rss += \`<link>https://\${MY_DOMAIN}</link>\`;
+    rss += \`<description>\${escapeXml(description)}</description>\`;
+    rss += \`<language>\${RSS_LANGUAGE}</language>\`;
+    rss += \`<lastBuildDate>\${buildDate}</lastBuildDate>\`;
+    rss += \`<atom:link href="https://\${MY_DOMAIN}/rss.xml" rel="self" type="application/rss+xml"/>\`;
+    slugs.forEach((slug) => {
+      const pageId = SLUG_TO_PAGE[slug];
+      const metadata = PAGE_METADATA[slug] || {};
+      const itemTitle = metadata.title || PAGE_TITLE || slug || 'Home';
+      const itemDescription = metadata.description || PAGE_DESCRIPTION || '';
+      const itemUrl = 'https://' + MY_DOMAIN + (slug ? '/' + slug : '');
+      rss += '<item>';
+      rss += \`<title>\${escapeXml(itemTitle)}</title>\`;
+      rss += \`<link>\${itemUrl}</link>\`;
+      rss += \`<guid isPermaLink="true">\${itemUrl}</guid>\`;
+      if (itemDescription) {
+        rss += \`<description>\${escapeXml(itemDescription)}</description>\`;
+      }
+      rss += '</item>';
+    });
+    rss += '</channel>';
+    rss += '</rss>';
+    return rss;
+  }
+
+  function escapeXml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, OPTIONS',
@@ -427,6 +487,11 @@ ${
     if (url.pathname === '/sitemap.xml') {
       let response = new Response(generateSitemap());
       response.headers.set('content-type', 'application/xml');
+      return response;
+    }
+    if (url.pathname === '/rss.xml' && RSS_ENABLED) {
+      let response = new Response(generateRssFeed());
+      response.headers.set('content-type', 'application/rss+xml; charset=utf-8');
       return response;
     }
     let response;

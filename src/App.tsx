@@ -57,6 +57,7 @@ import code, {
   Custom404Options,
   SubdomainRedirect,
   RedirectRule,
+  RssOptions,
 } from "./code";
 import "./styles.css";
 
@@ -135,38 +136,6 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
   );
 }
 
-interface SettingsSectionProps {
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-  isFirst?: boolean;
-}
-
-function SettingsSection({
-  title,
-  subtitle,
-  children,
-  isFirst,
-}: SettingsSectionProps) {
-  return (
-    <Box
-      sx={
-        isFirst ? {} : { mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }
-      }
-    >
-      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-        {title}
-      </Typography>
-      {subtitle && (
-        <Typography variant="caption" color="text.secondary">
-          {subtitle}
-        </Typography>
-      )}
-      {children}
-    </Box>
-  );
-}
-
 export default function App() {
   const [slugs, setSlugs] = useState<SlugPair[]>([]);
   const [myDomain, setMyDomain] = useState("");
@@ -228,6 +197,12 @@ export default function App() {
     SubdomainRedirect[]
   >([]);
   const [redirectRules, setRedirectRules] = useState<RedirectRule[]>([]);
+  const [rss, setRss] = useState<RssOptions>({
+    enabled: false,
+    title: "",
+    description: "",
+    language: "en-us",
+  });
 
   function createInputHandler<T>(
     setter: React.Dispatch<React.SetStateAction<T>>,
@@ -328,6 +303,7 @@ export default function App() {
   const handleCachingChange = createFieldHandler(setCaching, caching);
   const handleCustomHtmlChange = createFieldHandler(setCustomHtml, customHtml);
   const handleCustom404Change = createFieldHandler(setCustom404, custom404);
+  const handleRssChange = createFieldHandler(setRss, rss);
 
   function addSubdomainRedirect(): void {
     setSubdomainRedirects([
@@ -448,6 +424,7 @@ export default function App() {
     custom404,
     subdomainRedirects,
     redirectRules,
+    rss,
   };
 
   const script = noError ? code(codeData) : undefined;
@@ -1451,6 +1428,82 @@ export default function App() {
                         Google Rich Results Test
                       </Link>
                       .
+                    </Alert>
+                  </Box>
+                </Collapse>
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                >
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      RSS Feed
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Generate RSS 2.0 feed at /rss.xml
+                    </Typography>
+                  </Box>
+                  <Switch
+                    checked={rss.enabled}
+                    onChange={(e) =>
+                      handleRssChange("enabled", e.target.checked)
+                    }
+                  />
+                </Stack>
+                <Collapse in={rss.enabled} timeout="auto" unmountOnExit>
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="Feed Title"
+                      margin="dense"
+                      placeholder="My Blog"
+                      helperText="Title shown in RSS readers (defaults to domain)"
+                      onChange={(e) => handleRssChange("title", e.target.value)}
+                      value={rss.title}
+                      variant="outlined"
+                      size="small"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Feed Description"
+                      margin="dense"
+                      placeholder="Latest posts from my blog"
+                      helperText="Description shown in RSS readers"
+                      onChange={(e) =>
+                        handleRssChange("description", e.target.value)
+                      }
+                      value={rss.description}
+                      variant="outlined"
+                      size="small"
+                    />
+                    <FormControl fullWidth size="small" margin="dense">
+                      <InputLabel id="rssLanguageLabel">Language</InputLabel>
+                      <Select
+                        labelId="rssLanguageLabel"
+                        label="Language"
+                        value={rss.language}
+                        onChange={(e) =>
+                          handleRssChange("language", e.target.value)
+                        }
+                      >
+                        <MenuItem value="en-us">English (US)</MenuItem>
+                        <MenuItem value="en-gb">English (UK)</MenuItem>
+                        <MenuItem value="ja">Japanese</MenuItem>
+                        <MenuItem value="de">German</MenuItem>
+                        <MenuItem value="fr">French</MenuItem>
+                        <MenuItem value="es">Spanish</MenuItem>
+                        <MenuItem value="zh-cn">Chinese (Simplified)</MenuItem>
+                        <MenuItem value="zh-tw">Chinese (Traditional)</MenuItem>
+                        <MenuItem value="ko">Korean</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <Alert severity="info" sx={{ mt: 1 }}>
+                      RSS feed will include all pages defined in Pretty Links.
+                      Add page metadata for better feed content.
                     </Alert>
                   </Box>
                 </Collapse>
