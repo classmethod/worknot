@@ -487,7 +487,7 @@ export default function App() {
                   sx={{ color: "white !important", fontSize: 16 }}
                 />
               }
-              label="Maintained by Classmethod"
+              label="Cloudflare & Notion Partner"
               sx={{
                 backgroundColor: "rgba(255,255,255,0.2)",
                 color: "white",
@@ -581,8 +581,8 @@ export default function App() {
             />
             <FeatureCard
               icon={<VerifiedIcon sx={{ fontSize: 40 }} />}
-              title="Actively Maintained"
-              description="Maintained by Classmethod"
+              title="Partner Maintained"
+              description="By Classmethod, a Cloudflare & Notion partner"
             />
           </Box>
         </Paper>
