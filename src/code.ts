@@ -27,6 +27,19 @@ export interface BrandingOptions {
   siteName?: string;
   brandReplacement?: string;
   twitterHandle?: string;
+  faviconUrl?: string;
+}
+
+export interface AnalyticsOptions {
+  googleTagId?: string;
+}
+
+export interface CustomHtmlOptions {
+  headerHtml?: string;
+}
+
+export interface Custom404Options {
+  notionUrl?: string;
 }
 
 export interface CodeData {
@@ -42,6 +55,9 @@ export interface CodeData {
   pageMetadata: Record<string, PageMetadata>;
   structuredData: StructuredDataOptions;
   branding: BrandingOptions;
+  analytics: AnalyticsOptions;
+  customHtml: CustomHtmlOptions;
+  custom404: Custom404Options;
 }
 
 function getId(url: string): string {
@@ -68,6 +84,9 @@ export default function code(data: CodeData): string {
     pageMetadata,
     structuredData,
     branding,
+    analytics,
+    customHtml,
+    custom404,
   } = data;
   let url = myDomain.replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
@@ -118,6 +137,25 @@ ${slugs
   const SITE_NAME = '${branding?.siteName || ""}';
   const BRAND_REPLACEMENT = '${branding?.brandReplacement || ""}';
   const TWITTER_HANDLE = '${branding?.twitterHandle || ""}';
+  const FAVICON_URL = '${branding?.faviconUrl || ""}';
+
+  /*
+   * Step 3.4: analytics configuration (optional)
+   * Add your Google Analytics 4 Measurement ID for built-in tracking
+   */
+  const GOOGLE_TAG_ID = '${analytics?.googleTagId || ""}';
+
+  /*
+   * Step 3.5: custom HTML header injection (optional)
+   * Add custom HTML to the top of the page body (e.g., navigation, announcements)
+   */
+  const CUSTOM_HEADER = \`${customHtml?.headerHtml || ""}\`;
+
+  /*
+   * Step 3.6: custom 404 page configuration (optional)
+   * Specify a Notion page ID to display when a page is not found
+   */
+  const CUSTOM_404_PAGE_ID = '${custom404?.notionUrl ? getId(custom404.notionUrl) : ""}';
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
   const GOOGLE_FONT = '${googleFont || ""}';
@@ -345,6 +383,25 @@ ${slugs
       response.headers.delete('X-Content-Security-Policy');
     }
 
+    // Handle 404 with custom page if configured (Issue #12)
+    if (response.status === 404 && CUSTOM_404_PAGE_ID !== '') {
+      const notFoundUrl = new URL(url);
+      notFoundUrl.pathname = '/' + CUSTOM_404_PAGE_ID;
+      const notFoundResponse = await fetch(notFoundUrl.toString(), {
+        headers: request.headers,
+        method: 'GET',
+      });
+      // Return custom 404 page content with 404 status
+      response = new Response(notFoundResponse.body, {
+        status: 404,
+        statusText: 'Not Found',
+        headers: notFoundResponse.headers,
+      });
+      response.headers.delete('Content-Security-Policy');
+      response.headers.delete('X-Content-Security-Policy');
+      return appendJavascript(response, SLUG_TO_PAGE, '404');
+    }
+
     // Get current slug from page ID for canonical URL
     const pageId = url.pathname.slice(-32);
     const currentSlug = PAGE_TO_SLUG[pageId] || '';
@@ -419,6 +476,18 @@ ${slugs
     }
   }
 
+  class LinkRewriter {
+    element(element) {
+      // Remove Notion's default favicon links when custom favicon is set (Issue #16)
+      if (FAVICON_URL !== '') {
+        const rel = element.getAttribute('rel');
+        if (rel && (rel.includes('icon') || rel === 'apple-touch-icon')) {
+          element.remove();
+        }
+      }
+    }
+  }
+
   class HeadRewriter {
     constructor(slug) {
       this.slug = slug;
@@ -430,6 +499,24 @@ ${slugs
       const canonicalUrl = 'https://' + MY_DOMAIN + (this.slug ? '/' + this.slug : '');
       element.append(\`<link rel="canonical" href="\${canonicalUrl}">\`, { html: true });
       element.append(\`<meta name="robots" content="index, follow">\`, { html: true });
+
+      // Add custom favicon if configured (Issue #16)
+      if (FAVICON_URL !== '') {
+        element.append(\`<link rel="icon" href="\${FAVICON_URL}" type="image/x-icon">\`, { html: true });
+        element.append(\`<link rel="shortcut icon" href="\${FAVICON_URL}" type="image/x-icon">\`, { html: true });
+        element.append(\`<link rel="apple-touch-icon" href="\${FAVICON_URL}">\`, { html: true });
+      }
+
+      // Add Google Analytics 4 if configured (Issue #14)
+      if (GOOGLE_TAG_ID !== '') {
+        element.append(\`<script async src="https://www.googletagmanager.com/gtag/js?id=\${GOOGLE_TAG_ID}"></script>
+        <script>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', '\${GOOGLE_TAG_ID}');
+        </script>\`, { html: true });
+      }
 
       // Add Twitter/X meta tags for social cards (Issue #19)
       if (TWITTER_HANDLE !== '') {
@@ -498,6 +585,10 @@ ${slugs
       this.SLUG_TO_PAGE = SLUG_TO_PAGE;
     }
     element(element) {
+      // Add custom header HTML at the top of body if configured (Issue #20)
+      if (CUSTOM_HEADER !== '') {
+        element.prepend(CUSTOM_HEADER, { html: true });
+      }
       element.append(\`<div style="display:none">Powered by <a href="http://worknot.classmethod.cf">Worknot</a></div>
       <script>
       window.CONFIG.domainBaseUrl = 'https://\${MY_DOMAIN}';
@@ -603,9 +694,11 @@ ${slugs
   async function appendJavascript(res, SLUG_TO_PAGE, slug) {
     const metaRewriter = new MetaRewriter(slug);
     const headRewriter = new HeadRewriter(slug);
+    const linkRewriter = new LinkRewriter();
     return new HTMLRewriter()
       .on('title', metaRewriter)
       .on('meta', metaRewriter)
+      .on('link', linkRewriter)
       .on('head', headRewriter)
       .on('body', new BodyRewriter(SLUG_TO_PAGE))
       .transform(res);
