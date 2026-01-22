@@ -136,38 +136,6 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
   );
 }
 
-interface SettingsSectionProps {
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-  isFirst?: boolean;
-}
-
-function SettingsSection({
-  title,
-  subtitle,
-  children,
-  isFirst,
-}: SettingsSectionProps) {
-  return (
-    <Box
-      sx={
-        isFirst ? {} : { mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }
-      }
-    >
-      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-        {title}
-      </Typography>
-      {subtitle && (
-        <Typography variant="caption" color="text.secondary">
-          {subtitle}
-        </Typography>
-      )}
-      {children}
-    </Box>
-  );
-}
-
 export default function App() {
   const [slugs, setSlugs] = useState<SlugPair[]>([]);
   const [myDomain, setMyDomain] = useState("");
