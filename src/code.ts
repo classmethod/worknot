@@ -297,11 +297,26 @@ ${slugs
       response.headers.delete('X-Content-Security-Policy');
     }
 
-    return appendJavascript(response, SLUG_TO_PAGE);
+    // Get current slug from page ID for canonical URL
+    const pageId = url.pathname.slice(-32);
+    const currentSlug = PAGE_TO_SLUG[pageId] || '';
+
+    return appendJavascript(response, SLUG_TO_PAGE, currentSlug);
   }
 
   class MetaRewriter {
+    constructor(slug) {
+      this.slug = slug;
+    }
     element(element) {
+      // Remove noindex meta tag for SEO (Issue #8)
+      if (element.getAttribute('name') === 'robots') {
+        const content = element.getAttribute('content');
+        if (content && content.includes('noindex')) {
+          element.remove();
+          return;
+        }
+      }
       if (MY_DOMAIN !== '') {
         if (element.getAttribute('property') === 'og:site_name') {
           element.setAttribute('content', MY_DOMAIN);
@@ -323,9 +338,11 @@ ${slugs
           element.setAttribute('content', PAGE_DESCRIPTION);
         }
       }
+      // Set canonical URL for og:url and twitter:url (Issue #9)
       if (element.getAttribute('property') === 'og:url'
         || element.getAttribute('name') === 'twitter:url') {
-        element.setAttribute('content', MY_DOMAIN);
+        const canonicalUrl = 'https://' + MY_DOMAIN + (this.slug ? '/' + this.slug : '');
+        element.setAttribute('content', canonicalUrl);
       }
       if (element.getAttribute('name') === 'apple-itunes-app') {
         element.remove();
@@ -334,7 +351,15 @@ ${slugs
   }
 
   class HeadRewriter {
+    constructor(slug) {
+      this.slug = slug;
+    }
     element(element) {
+      // Add canonical URL and robots meta tag for SEO (Issue #8 & #9)
+      const canonicalUrl = 'https://' + MY_DOMAIN + (this.slug ? '/' + this.slug : '');
+      element.append(\`<link rel="canonical" href="\${canonicalUrl}">\`, { html: true });
+      element.append(\`<meta name="robots" content="index, follow">\`, { html: true });
+
       if (GOOGLE_FONT !== '') {
         element.append(\`<link href="https://fonts.googleapis.com/css?family=\${GOOGLE_FONT.replace(' ', '+')}:Regular,Bold,Italic&display=swap" rel="stylesheet">
         <style>* { font-family: "\${GOOGLE_FONT}" !important; }</style>\`, {
@@ -463,11 +488,13 @@ ${slugs
     }
   }
 
-  async function appendJavascript(res, SLUG_TO_PAGE) {
+  async function appendJavascript(res, SLUG_TO_PAGE, slug) {
+    const metaRewriter = new MetaRewriter(slug);
+    const headRewriter = new HeadRewriter(slug);
     return new HTMLRewriter()
-      .on('title', new MetaRewriter())
-      .on('meta', new MetaRewriter())
-      .on('head', new HeadRewriter())
+      .on('title', metaRewriter)
+      .on('meta', metaRewriter)
+      .on('head', headRewriter)
       .on('body', new BodyRewriter(SLUG_TO_PAGE))
       .transform(res);
   }`;
