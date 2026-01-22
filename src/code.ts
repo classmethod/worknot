@@ -52,6 +52,12 @@ export interface SubdomainRedirect {
   redirectUrl: string;
 }
 
+export interface RedirectRule {
+  from: string;
+  to: string;
+  permanent: boolean;
+}
+
 export interface CodeData {
   myDomain: string;
   notionUrl: string;
@@ -70,6 +76,7 @@ export interface CodeData {
   customHtml: CustomHtmlOptions;
   custom404: Custom404Options;
   subdomainRedirects: SubdomainRedirect[];
+  redirectRules: RedirectRule[];
 }
 
 function getId(url: string): string {
@@ -101,6 +108,7 @@ export default function code(data: CodeData): string {
     customHtml,
     custom404,
     subdomainRedirects,
+    redirectRules,
   } = data;
   let url = myDomain.replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
@@ -189,6 +197,21 @@ ${
     .map((r) => `    '${r.subdomain}': '${r.redirectUrl}',\n`)
     .join("") || ""
 }  };
+
+  /*
+   * Step 3.8: custom redirect rules (optional)
+   * Redirect specific paths to other paths or external URLs (301/302)
+   */
+  const REDIRECT_RULES = [
+${
+  redirectRules
+    ?.filter((r) => r.from && r.to)
+    .map(
+      (r) =>
+        `    { from: '${r.from}', to: '${r.to}', permanent: ${r.permanent} },\n`,
+    )
+    .join("") || ""
+}  ];
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
   const GOOGLE_FONT = '${googleFont || ""}';
@@ -322,6 +345,16 @@ ${
         const redirectBase = SUBDOMAIN_REDIRECTS[subdomain];
         const redirectUrl = redirectBase + url.pathname + url.search;
         return Response.redirect(redirectUrl, 301);
+      }
+    }
+
+    // Handle custom redirect rules (Issue #32)
+    for (const rule of REDIRECT_RULES) {
+      if (url.pathname === rule.from) {
+        const redirectUrl = rule.to.startsWith('http')
+          ? rule.to
+          : 'https://' + MY_DOMAIN + rule.to;
+        return Response.redirect(redirectUrl, rule.permanent ? 301 : 302);
       }
     }
 
