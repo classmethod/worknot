@@ -36,6 +36,7 @@ export interface SeoOptions {
 
 export interface AnalyticsOptions {
   googleTagId?: string;
+  facebookPixelId?: string;
 }
 
 export interface CustomHtmlOptions {
@@ -160,9 +161,10 @@ ${slugs
 
   /*
    * Step 3.5: analytics configuration (optional)
-   * Add your Google Analytics 4 Measurement ID for built-in tracking
+   * Add your Google Analytics 4 Measurement ID and/or Facebook Pixel ID for built-in tracking
    */
   const GOOGLE_TAG_ID = '${analytics?.googleTagId || ""}';
+  const FACEBOOK_PIXEL_ID = '${analytics?.facebookPixelId || ""}';
 
   /*
    * Step 3.6: custom HTML header injection (optional)
@@ -563,6 +565,25 @@ ${
           gtag('js', new Date());
           gtag('config', '\${GOOGLE_TAG_ID}');
         </script>\`, { html: true });
+      }
+
+      // Add Facebook Pixel if configured (Issue #31)
+      if (FACEBOOK_PIXEL_ID !== '') {
+        element.append(\`<script>
+          !function(f,b,e,v,n,t,s)
+          {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+          n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+          if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+          n.queue=[];t=b.createElement(e);t.async=!0;
+          t.src=v;s=b.getElementsByTagName(e)[0];
+          s.parentNode.insertBefore(t,s)}(window, document,'script',
+          'https://connect.facebook.net/en_US/fbevents.js');
+          fbq('init', '\${FACEBOOK_PIXEL_ID}');
+          fbq('track', 'PageView');
+        </script>
+        <noscript><img height="1" width="1" style="display:none"
+          src="https://www.facebook.com/tr?id=\${FACEBOOK_PIXEL_ID}&ev=PageView&noscript=1"
+        /></noscript>\`, { html: true });
       }
 
       // Add Twitter/X meta tags for social cards (Issue #19)

@@ -161,6 +161,7 @@ export default function App() {
   >({});
   const [analytics, setAnalytics] = useState<AnalyticsOptions>({
     googleTagId: "",
+    facebookPixelId: "",
   });
   const [customHtml, setCustomHtml] = useState<CustomHtmlOptions>({
     headerHtml: "",
@@ -925,6 +926,19 @@ export default function App() {
                     handleAnalyticsChange("googleTagId", e.target.value)
                   }
                   value={analytics.googleTagId}
+                  variant="outlined"
+                  size="small"
+                />
+                <TextField
+                  fullWidth
+                  label="Facebook Pixel ID"
+                  margin="dense"
+                  placeholder="123456789012345"
+                  helperText="Your Facebook Pixel ID for conversion tracking"
+                  onChange={(e) =>
+                    handleAnalyticsChange("facebookPixelId", e.target.value)
+                  }
+                  value={analytics.facebookPixelId}
                   variant="outlined"
                   size="small"
                 />
