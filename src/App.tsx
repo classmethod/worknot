@@ -21,7 +21,6 @@ import {
   Chip,
   Link,
   Switch,
-  IconButton,
 } from "@mui/material";
 import {
   Language as LanguageIcon,
@@ -36,7 +35,6 @@ import {
   Update as UpdateIcon,
   Verified as VerifiedIcon,
   ExpandMore as ExpandMoreIcon,
-  Search as SearchIcon,
 } from "@mui/icons-material";
 import code, {
   CodeData,
