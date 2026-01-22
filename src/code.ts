@@ -254,28 +254,18 @@ ${
   };
 
   function handleOptions(request) {
-    if (request.headers.get('Origin') !== null &&
+    const isCorsPreFlight = request.headers.get('Origin') !== null &&
       request.headers.get('Access-Control-Request-Method') !== null &&
-      request.headers.get('Access-Control-Request-Headers') !== null) {
-      // Handle CORS pre-flight request.
-      return new Response(null, {
-        headers: corsHeaders
-      });
-    } else {
-      // Handle standard OPTIONS request.
-      return new Response(null, {
-        headers: {
-          'Allow': 'GET, HEAD, POST, PUT, OPTIONS',
-        }
-      });
-    }
+      request.headers.get('Access-Control-Request-Headers') !== null;
+    return new Response(null, {
+      headers: isCorsPreFlight ? corsHeaders : { 'Allow': 'GET, HEAD, POST, PUT, OPTIONS' }
+    });
   }
 
   // Extract Notion site domain from the original Notion URL
   const NOTION_SITE_DOMAIN = (() => {
     try {
-      const notionHost = new URL('${notionUrl}').hostname;
-      return notionHost;
+      return new URL('${notionUrl}').hostname;
     } catch {
       return 'www.notion.so';
     }
@@ -283,11 +273,45 @@ ${
 
   // Rewrite domain references in API response body
   function rewriteDomainInBody(body) {
-    // Replace *.notion.site domain with custom domain
-    let result = body.replace(/[a-z0-9-]+\\.notion\\.site/g, MY_DOMAIN);
-    // Also replace www.notion.so references
-    result = result.replace(/www\\.notion\\.so/g, MY_DOMAIN);
-    return result;
+    return body
+      .replace(/[a-z0-9-]+\\.notion\\.site/g, MY_DOMAIN)
+      .replace(/www\\.notion\\.so/g, MY_DOMAIN);
+  }
+
+  // Common headers for API requests
+  const API_HEADERS = {
+    'content-type': 'application/json;charset=UTF-8',
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  };
+
+  // Fetch and rewrite JS assets
+  async function fetchJsAsset(url, contentType) {
+    const response = await fetch(url.toString());
+    const body = rewriteDomainInBody(await response.text());
+    const newResponse = new Response(body, response);
+    newResponse.headers.set('Content-Type', contentType);
+    return newResponse;
+  }
+
+  // Fetch and rewrite API responses
+  async function fetchApiWithRewrite(url, request, transformJson) {
+    const response = await fetch(url.toString(), {
+      body: request.body,
+      headers: API_HEADERS,
+      method: 'POST',
+    });
+    let body = rewriteDomainInBody(await response.text());
+    if (transformJson) {
+      try {
+        const json = JSON.parse(body);
+        transformJson(json);
+        body = JSON.stringify(json);
+      } catch (e) {}
+    }
+    const newResponse = new Response(body, response);
+    newResponse.headers.set('Access-Control-Allow-Origin', '*');
+    newResponse.headers.delete('Content-Security-Policy');
+    return newResponse;
   }
 
   async function fetchAndApply(request) {
@@ -296,112 +320,56 @@ ${
     }
     let url = new URL(request.url);
 
-    // Handle subdomain redirects (Issue #15)
-    const hostname = url.hostname;
+    // Handle subdomain redirects
     const domainParts = MY_DOMAIN.split('.');
-    const hostParts = hostname.split('.');
-    // Check if the request is for a subdomain of the main domain
+    const hostParts = url.hostname.split('.');
     if (hostParts.length > domainParts.length) {
       const subdomain = hostParts.slice(0, hostParts.length - domainParts.length).join('.');
       const mainDomainFromHost = hostParts.slice(hostParts.length - domainParts.length).join('.');
       if (mainDomainFromHost === MY_DOMAIN && SUBDOMAIN_REDIRECTS[subdomain]) {
-        const redirectBase = SUBDOMAIN_REDIRECTS[subdomain];
-        const redirectUrl = redirectBase + url.pathname + url.search;
-        return Response.redirect(redirectUrl, 301);
+        return Response.redirect(SUBDOMAIN_REDIRECTS[subdomain] + url.pathname + url.search, 301);
       }
     }
 
-    // Use the original Notion site domain instead of www.notion.so
     url.hostname = NOTION_SITE_DOMAIN;
+
     if (url.pathname === '/robots.txt') {
       return new Response('Sitemap: https://' + MY_DOMAIN + '/sitemap.xml');
     }
     if (url.pathname === '/sitemap.xml') {
-      let response = new Response(generateSitemap());
+      const response = new Response(generateSitemap());
       response.headers.set('content-type', 'application/xml');
       return response;
     }
-    let response;
+
+    // Handle JS assets
     if (url.pathname.startsWith('/app') && url.pathname.endsWith('js')) {
-      response = await fetch(url.toString());
-      let body = await response.text();
-      body = rewriteDomainInBody(body);
-      response = new Response(body, response);
-      response.headers.set('Content-Type', 'application/x-javascript');
-      return response;
-    } else if (url.pathname.startsWith('/_assets/') && url.pathname.endsWith('.js')) {
-      // Handle Notion's new asset paths
-      response = await fetch(url.toString());
-      let body = await response.text();
-      body = rewriteDomainInBody(body);
-      response = new Response(body, response);
-      response.headers.set('Content-Type', 'application/javascript');
-      return response;
-    } else if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
-      // Proxy getPublicPageData and rewrite domain info
-      response = await fetch(url.toString(), {
-        body: request.body,
-        headers: {
-          'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        method: 'POST',
-      });
-      let body = await response.text();
-      // Rewrite domain info to prevent redirect
-      body = rewriteDomainInBody(body);
-      // Also rewrite specific fields that cause redirects or interstitial pages
-      try {
-        const json = JSON.parse(body);
+      return fetchJsAsset(url, 'application/x-javascript');
+    }
+    if (url.pathname.startsWith('/_assets/') && url.pathname.endsWith('.js')) {
+      return fetchJsAsset(url, 'application/javascript');
+    }
+
+    // Handle API requests
+    if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
+      return fetchApiWithRewrite(url, request, (json) => {
         if (json.spaceDomain) json.spaceDomain = MY_DOMAIN.split('.')[0];
         if (json.publicDomainName) json.publicDomainName = MY_DOMAIN;
-        // Remove requireInterstitial to prevent "page not found" error
         delete json.requireInterstitial;
-        // Set requestedOnExternalDomain to false to avoid external domain checks
         json.requestedOnExternalDomain = false;
-        body = JSON.stringify(json);
-      } catch (e) {
-        // If JSON parsing fails, continue with string replacement
-      }
-      response = new Response(body, response);
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      response.headers.delete('Content-Security-Policy');
-      return response;
-    } else if (url.pathname.startsWith('/api/v3/syncRecordValuesMain') ||
-               url.pathname.startsWith('/api/v3/syncRecordValuesSpaceInitial') ||
-               url.pathname.startsWith('/api/v3/getPublicSpaceData')) {
-      // Rewrite domain info in sync/space API responses to prevent redirect
-      response = await fetch(url.toString(), {
-        body: request.body,
-        headers: {
-          'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        method: 'POST',
       });
-      let body = await response.text();
-      body = rewriteDomainInBody(body);
-      response = new Response(body, response);
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      response.headers.delete('Content-Security-Policy');
-      return response;
-    } else if ((url.pathname.startsWith('/api'))) {
-      // Forward other API requests
-      response = await fetch(url.toString(), {
-        body: request.body,
-        headers: {
-          'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        method: 'POST',
-      });
-      let body = await response.text();
-      body = rewriteDomainInBody(body);
-      response = new Response(body, response);
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      response.headers.delete('Content-Security-Policy');
-      return response;
-    } else if (url.pathname.startsWith('/image') && IMAGE_OPTIMIZATION !== 'none') {
+    }
+    if (url.pathname.startsWith('/api/v3/syncRecordValuesMain') ||
+        url.pathname.startsWith('/api/v3/syncRecordValuesSpaceInitial') ||
+        url.pathname.startsWith('/api/v3/getPublicSpaceData')) {
+      return fetchApiWithRewrite(url, request);
+    }
+    if (url.pathname.startsWith('/api')) {
+      return fetchApiWithRewrite(url, request);
+    }
+
+    // Handle images
+    if (url.pathname.startsWith('/image') && IMAGE_OPTIMIZATION !== 'none') {
       const response = await fetch(url, rewriteImageOptions());
       return response;
     } else if (slugs.indexOf(url.pathname.slice(1)) > -1) {

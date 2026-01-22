@@ -235,68 +235,29 @@ export default function App() {
   ): void {
     setPageMetadata({
       ...pageMetadata,
-      [slug]: {
-        ...pageMetadata[slug],
-        [field]: value,
-      },
+      [slug]: { ...pageMetadata[slug], [field]: value },
     });
     setCopied(false);
   }
 
-  function handleStructuredDataChange(
-    field: keyof StructuredDataOptions,
-    value: string | boolean,
-  ): void {
-    setStructuredData({
-      ...structuredData,
-      [field]: value,
-    });
-    setCopied(false);
+  function createFieldHandler<T extends object>(
+    state: T,
+    setter: React.Dispatch<React.SetStateAction<T>>,
+  ) {
+    return (field: keyof T, value: T[keyof T]) => {
+      setter({ ...state, [field]: value });
+      setCopied(false);
+    };
   }
 
-  function handleBrandingChange(
-    field: keyof BrandingOptions,
-    value: string,
-  ): void {
-    setBranding({
-      ...branding,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleAnalyticsChange(
-    field: keyof AnalyticsOptions,
-    value: string,
-  ): void {
-    setAnalytics({
-      ...analytics,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleCustomHtmlChange(
-    field: keyof CustomHtmlOptions,
-    value: string,
-  ): void {
-    setCustomHtml({
-      ...customHtml,
-      [field]: value,
-    });
-    setCopied(false);
-  }
-
-  function handleCustom404Change(
-    field: keyof Custom404Options,
-    value: string,
-  ): void {
-    setCustom404({
-      ...custom404,
-      [field]: value,
-    });
-    setCopied(false);
-  }
+  const handleStructuredDataChange = createFieldHandler(
+    structuredData,
+    setStructuredData,
+  );
+  const handleBrandingChange = createFieldHandler(branding, setBranding);
+  const handleAnalyticsChange = createFieldHandler(analytics, setAnalytics);
+  const handleCustomHtmlChange = createFieldHandler(customHtml, setCustomHtml);
+  const handleCustom404Change = createFieldHandler(custom404, setCustom404);
 
   function addSubdomainRedirect(): void {
     setSubdomainRedirects([
