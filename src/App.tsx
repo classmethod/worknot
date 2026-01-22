@@ -47,6 +47,7 @@ import code, {
   CustomHtmlOptions,
   Custom404Options,
   SubdomainRedirect,
+  RedirectRule,
 } from "./code";
 import "./styles.css";
 
@@ -171,6 +172,7 @@ export default function App() {
   const [subdomainRedirects, setSubdomainRedirects] = useState<
     SubdomainRedirect[]
   >([]);
+  const [redirectRules, setRedirectRules] = useState<RedirectRule[]>([]);
 
   function createInputHandler<T>(
     setter: React.Dispatch<React.SetStateAction<T>>,
@@ -336,6 +338,29 @@ export default function App() {
     setCopied(false);
   }
 
+  function addRedirectRule(): void {
+    setRedirectRules([...redirectRules, { from: "", to: "", permanent: true }]);
+    setCopied(false);
+  }
+
+  function deleteRedirectRule(index: number): void {
+    setRedirectRules(redirectRules.filter((_, i) => i !== index));
+    setCopied(false);
+  }
+
+  function handleRedirectRuleChange(
+    index: number,
+    field: keyof RedirectRule,
+    value: string | boolean,
+  ): void {
+    setRedirectRules(
+      redirectRules.map((rule, i) =>
+        i === index ? { ...rule, [field]: value } : rule,
+      ),
+    );
+    setCopied(false);
+  }
+
   function toggleSlugMetadata(index: number): void {
     setSlugMetadataExpanded({
       ...slugMetadataExpanded,
@@ -403,6 +428,7 @@ export default function App() {
     customHtml,
     custom404,
     subdomainRedirects,
+    redirectRules,
   };
 
   const script = noError ? code(codeData) : undefined;
@@ -1052,7 +1078,95 @@ export default function App() {
                   startIcon={<AddIcon />}
                   sx={{ mt: 1 }}
                 >
-                  Add Redirect
+                  Add Subdomain Redirect
+                </Button>
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                >
+                  URL Redirect Rules
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Redirect specific paths to other URLs (301 permanent / 302
+                  temporary)
+                </Typography>
+                {redirectRules.map((rule, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      mt: 1,
+                      p: 1.5,
+                      backgroundColor: "grey.100",
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Stack direction="row" spacing={1} alignItems="flex-start">
+                      <TextField
+                        label="From Path"
+                        placeholder="/old-page"
+                        value={rule.from}
+                        onChange={(e) =>
+                          handleRedirectRuleChange(
+                            index,
+                            "from",
+                            e.target.value,
+                          )
+                        }
+                        variant="outlined"
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        label="To Path/URL"
+                        placeholder="/new-page or https://..."
+                        value={rule.to}
+                        onChange={(e) =>
+                          handleRedirectRuleChange(index, "to", e.target.value)
+                        }
+                        variant="outlined"
+                        size="small"
+                        sx={{ flex: 2 }}
+                      />
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={rule.permanent}
+                            onChange={(e) =>
+                              handleRedirectRuleChange(
+                                index,
+                                "permanent",
+                                e.target.checked,
+                              )
+                            }
+                            size="small"
+                          />
+                        }
+                        label="301"
+                        sx={{ minWidth: 70 }}
+                      />
+                      <Button
+                        onClick={() => deleteRedirectRule(index)}
+                        color="error"
+                        size="small"
+                        sx={{ minWidth: "auto", px: 1 }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </Button>
+                    </Stack>
+                  </Box>
+                ))}
+                <Button
+                  onClick={addRedirectRule}
+                  size="small"
+                  variant="text"
+                  startIcon={<AddIcon />}
+                  sx={{ mt: 1 }}
+                >
+                  Add Redirect Rule
                 </Button>
               </Box>
 
