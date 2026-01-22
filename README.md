@@ -36,7 +36,7 @@ Host your Notion Site on a custom domain with Cloudflare Workers. Maintained by 
 
 ## Usage
 
-Visit the generator at **https://worknot.classmethodeurope.workers.dev/**
+Visit the generator at **https://worknot.classmethod.live/**
 
 1. Enter your domain and Notion page URL
 2. Configure pretty links and advanced settings
