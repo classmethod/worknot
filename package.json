@@ -1,20 +1,25 @@
 {
-  "name": "react",
+  "name": "worknot",
   "version": "1.0.0",
-  "description": "React example starter project",
+  "description": "Host your Notion Site on a custom domain with Cloudflare Workers",
   "keywords": [
     "react",
-    "starter"
+    "cloudflare",
+    "notion",
+    "workers"
   ],
   "type": "module",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=20.0.0 <24.0.0"
+  },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.7",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-scripts": "^5.0.1"
   },
   "devDependencies": {
@@ -22,6 +27,15 @@
     "@types/react-dom": "^19.2.3",
     "typescript": "^5.9.3",
     "wrangler": "^4.60.0"
+  },
+  "overrides": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@types/react": "^19.2.9",
+    "@types/react-dom": "^19.2.3",
+    "@pmmmwh/react-refresh-webpack-plugin": {
+      "schema-utils": "^3.3.0"
+    }
   },
   "scripts": {
     "start": "react-scripts start",
