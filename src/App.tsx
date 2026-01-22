@@ -20,6 +20,7 @@ import {
   Paper,
   Chip,
   Link,
+  Switch,
 } from "@mui/material";
 import {
   Language as LanguageIcon,
@@ -33,8 +34,14 @@ import {
   Settings as SettingsIcon,
   Update as UpdateIcon,
   Verified as VerifiedIcon,
+  ExpandMore as ExpandMoreIcon,
 } from "@mui/icons-material";
-import code, { CodeData, ImageOptions } from "./code";
+import code, {
+  CodeData,
+  ImageOptions,
+  PageMetadata,
+  StructuredDataOptions,
+} from "./code";
 import "./styles.css";
 
 const DEFAULT_DOMAIN = "worknot.classmethod.cf";
@@ -125,6 +132,18 @@ export default function App() {
   const [optionImage, setOptionImage] = useState<ImageOptions>({});
   const [optionalImageResize, setOptionalImageResize] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [pageMetadata, setPageMetadata] = useState<
+    Record<string, PageMetadata>
+  >({});
+  const [structuredData, setStructuredData] = useState<StructuredDataOptions>({
+    enabled: false,
+    schemaType: "WebPage",
+    organizationName: "",
+    logoUrl: "",
+  });
+  const [slugMetadataExpanded, setSlugMetadataExpanded] = useState<
+    Record<number, boolean>
+  >({});
 
   function createInputHandler<T>(
     setter: React.Dispatch<React.SetStateAction<T>>,
@@ -149,12 +168,31 @@ export default function App() {
   }
 
   function deleteSlug(index: number): void {
+    const slug = slugs[index][0];
     setSlugs(slugs.filter((_, i) => i !== index));
+    // Clean up page metadata for the deleted slug
+    if (slug && pageMetadata[slug]) {
+      const newMetadata = { ...pageMetadata };
+      delete newMetadata[slug];
+      setPageMetadata(newMetadata);
+    }
+    // Clean up expanded state
+    const newExpanded = { ...slugMetadataExpanded };
+    delete newExpanded[index];
+    setSlugMetadataExpanded(newExpanded);
     setCopied(false);
   }
 
   function handleCustomURL(value: string, index: number): void {
+    const oldSlug = slugs[index][0];
     setSlugs(updateSlugAtIndex(slugs, index, 0, value));
+    // Update page metadata key when slug changes
+    if (oldSlug !== value && pageMetadata[oldSlug]) {
+      const newMetadata = { ...pageMetadata };
+      newMetadata[value] = newMetadata[oldSlug];
+      delete newMetadata[oldSlug];
+      setPageMetadata(newMetadata);
+    }
     setCopied(false);
   }
 
@@ -165,6 +203,39 @@ export default function App() {
 
   function handleOptional(): void {
     setOptional(!optional);
+  }
+
+  function handlePageMetadata(
+    slug: string,
+    field: keyof PageMetadata,
+    value: string,
+  ): void {
+    setPageMetadata({
+      ...pageMetadata,
+      [slug]: {
+        ...pageMetadata[slug],
+        [field]: value,
+      },
+    });
+    setCopied(false);
+  }
+
+  function handleStructuredDataChange(
+    field: keyof StructuredDataOptions,
+    value: string | boolean,
+  ): void {
+    setStructuredData({
+      ...structuredData,
+      [field]: value,
+    });
+    setCopied(false);
+  }
+
+  function toggleSlugMetadata(index: number): void {
+    setSlugMetadataExpanded({
+      ...slugMetadataExpanded,
+      [index]: !slugMetadataExpanded[index],
+    });
   }
 
   function clampValue(value: number, min: number, max: number): number {
@@ -219,6 +290,8 @@ export default function App() {
     customScript,
     customCss,
     optionImage,
+    pageMetadata,
+    structuredData,
   };
 
   const script = noError ? code(codeData) : undefined;
@@ -460,16 +533,96 @@ export default function App() {
                 variant="outlined"
                 size="small"
               />
-              <Button
-                onClick={() => deleteSlug(index)}
-                variant="text"
-                color="error"
-                size="small"
-                startIcon={<DeleteIcon />}
-                sx={{ mt: 1 }}
+              <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                <Button
+                  onClick={() => deleteSlug(index)}
+                  variant="text"
+                  color="error"
+                  size="small"
+                  startIcon={<DeleteIcon />}
+                >
+                  Remove
+                </Button>
+                {customUrl && (
+                  <Button
+                    onClick={() => toggleSlugMetadata(index)}
+                    variant="text"
+                    size="small"
+                    startIcon={
+                      <ExpandMoreIcon
+                        sx={{
+                          transform: slugMetadataExpanded[index]
+                            ? "rotate(180deg)"
+                            : "rotate(0deg)",
+                          transition: "transform 0.2s",
+                        }}
+                      />
+                    }
+                  >
+                    Page SEO
+                  </Button>
+                )}
+              </Stack>
+              <Collapse
+                in={slugMetadataExpanded[index] && !!customUrl}
+                timeout="auto"
+                unmountOnExit
               >
-                Remove
-              </Button>
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 2,
+                    backgroundColor: "grey.100",
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Custom metadata for /{customUrl}
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="Page Title"
+                    margin="dense"
+                    placeholder={pageTitle || "Custom title for this page"}
+                    onChange={(e) =>
+                      handlePageMetadata(customUrl, "title", e.target.value)
+                    }
+                    value={pageMetadata[customUrl]?.title || ""}
+                    variant="outlined"
+                    size="small"
+                  />
+                  <TextField
+                    fullWidth
+                    label="Page Description"
+                    margin="dense"
+                    placeholder={
+                      pageDescription || "Custom description for this page"
+                    }
+                    onChange={(e) =>
+                      handlePageMetadata(
+                        customUrl,
+                        "description",
+                        e.target.value,
+                      )
+                    }
+                    value={pageMetadata[customUrl]?.description || ""}
+                    variant="outlined"
+                    size="small"
+                  />
+                  <TextField
+                    fullWidth
+                    label="OG Image URL"
+                    margin="dense"
+                    placeholder="https://example.com/og-image.jpg"
+                    onChange={(e) =>
+                      handlePageMetadata(customUrl, "ogImage", e.target.value)
+                    }
+                    value={pageMetadata[customUrl]?.ogImage || ""}
+                    variant="outlined"
+                    size="small"
+                  />
+                </Box>
+              </Collapse>
             </Paper>
           ))}
 
@@ -557,6 +710,95 @@ export default function App() {
                 variant="outlined"
                 size="small"
               />
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                >
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      JSON-LD Structured Data
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Enable rich snippets in search results
+                    </Typography>
+                  </Box>
+                  <Switch
+                    checked={structuredData.enabled}
+                    onChange={(e) =>
+                      handleStructuredDataChange("enabled", e.target.checked)
+                    }
+                  />
+                </Stack>
+                <Collapse
+                  in={structuredData.enabled}
+                  timeout="auto"
+                  unmountOnExit
+                >
+                  <Box sx={{ mt: 2 }}>
+                    <FormControl fullWidth size="small" margin="dense">
+                      <InputLabel id="schemaTypeLabel">Schema Type</InputLabel>
+                      <Select
+                        labelId="schemaTypeLabel"
+                        label="Schema Type"
+                        value={structuredData.schemaType}
+                        onChange={(e) =>
+                          handleStructuredDataChange(
+                            "schemaType",
+                            e.target
+                              .value as StructuredDataOptions["schemaType"],
+                          )
+                        }
+                      >
+                        <MenuItem value="WebPage">WebPage</MenuItem>
+                        <MenuItem value="Article">Article</MenuItem>
+                        <MenuItem value="Organization">Organization</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <TextField
+                      fullWidth
+                      label="Organization Name"
+                      margin="dense"
+                      placeholder="Your Company Name"
+                      onChange={(e) =>
+                        handleStructuredDataChange(
+                          "organizationName",
+                          e.target.value,
+                        )
+                      }
+                      value={structuredData.organizationName}
+                      variant="outlined"
+                      size="small"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Logo URL"
+                      margin="dense"
+                      placeholder="https://example.com/logo.png"
+                      onChange={(e) =>
+                        handleStructuredDataChange("logoUrl", e.target.value)
+                      }
+                      value={structuredData.logoUrl}
+                      variant="outlined"
+                      size="small"
+                    />
+                    <Alert severity="info" sx={{ mt: 1 }}>
+                      Structured data helps search engines understand your
+                      content and display rich results. Validate with{" "}
+                      <Link
+                        href="https://search.google.com/test/rich-results"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Google Rich Results Test
+                      </Link>
+                      .
+                    </Alert>
+                  </Box>
+                </Collapse>
+              </Box>
             </Paper>
           </Collapse>
 

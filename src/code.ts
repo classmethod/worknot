@@ -10,6 +10,19 @@ export interface ImageOptions {
   imageMetadata?: string;
 }
 
+export interface PageMetadata {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+}
+
+export interface StructuredDataOptions {
+  enabled: boolean;
+  schemaType: "WebPage" | "Article" | "Organization";
+  organizationName?: string;
+  logoUrl?: string;
+}
+
 export interface CodeData {
   myDomain: string;
   notionUrl: string;
@@ -20,6 +33,8 @@ export interface CodeData {
   customScript: string;
   customCss: string;
   optionImage: ImageOptions;
+  pageMetadata: Record<string, PageMetadata>;
+  structuredData: StructuredDataOptions;
 }
 
 function getId(url: string): string {
@@ -43,6 +58,8 @@ export default function code(data: CodeData): string {
     customScript,
     customCss,
     optionImage,
+    pageMetadata,
+    structuredData,
   } = data;
   let url = myDomain.replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
@@ -70,6 +87,21 @@ ${slugs
   /* Step 3: enter your page title and description for SEO purposes */
   const PAGE_TITLE = '${pageTitle || ""}';
   const PAGE_DESCRIPTION = '${pageDescription || ""}';
+
+  /*
+   * Step 3.1: enter per-page metadata for better SEO (optional)
+   * Each key is a slug, each value contains title, description, and ogImage
+   */
+  const PAGE_METADATA = ${JSON.stringify(pageMetadata || {}, null, 4).replace(/\n/g, "\n  ")};
+
+  /*
+   * Step 3.2: structured data configuration for rich search results (optional)
+   * Enable to add JSON-LD schema markup to your pages
+   */
+  const STRUCTURED_DATA_ENABLED = ${structuredData?.enabled || false};
+  const SCHEMA_TYPE = '${structuredData?.schemaType || "WebPage"}';
+  const ORGANIZATION_NAME = '${structuredData?.organizationName || ""}';
+  const LOGO_URL = '${structuredData?.logoUrl || ""}';
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
   const GOOGLE_FONT = '${googleFont || ""}';
@@ -307,8 +339,14 @@ ${slugs
   class MetaRewriter {
     constructor(slug) {
       this.slug = slug;
+      // Get page-specific metadata or use defaults (Issue #11)
+      this.metadata = PAGE_METADATA[slug] || {};
     }
     element(element) {
+      const pageTitle = this.metadata.title || PAGE_TITLE;
+      const pageDescription = this.metadata.description || PAGE_DESCRIPTION;
+      const ogImage = this.metadata.ogImage;
+
       // Remove noindex meta tag for SEO (Issue #8)
       if (element.getAttribute('name') === 'robots') {
         const content = element.getAttribute('content');
@@ -322,21 +360,26 @@ ${slugs
           element.setAttribute('content', MY_DOMAIN);
         }
       }
-      if (PAGE_TITLE !== '') {
+      if (pageTitle !== '') {
         if (element.getAttribute('property') === 'og:title'
           || element.getAttribute('name') === 'twitter:title') {
-          element.setAttribute('content', PAGE_TITLE);
+          element.setAttribute('content', pageTitle);
         }
         if (element.tagName === 'title') {
-          element.setInnerContent(PAGE_TITLE);
+          element.setInnerContent(pageTitle);
         }
       }
-      if (PAGE_DESCRIPTION !== '') {
+      if (pageDescription !== '') {
         if (element.getAttribute('name') === 'description'
           || element.getAttribute('property') === 'og:description'
           || element.getAttribute('name') === 'twitter:description') {
-          element.setAttribute('content', PAGE_DESCRIPTION);
+          element.setAttribute('content', pageDescription);
         }
+      }
+      // Set custom OG image if specified (Issue #11)
+      if (ogImage && (element.getAttribute('property') === 'og:image'
+        || element.getAttribute('name') === 'twitter:image')) {
+        element.setAttribute('content', ogImage);
       }
       // Set canonical URL for og:url and twitter:url (Issue #9)
       if (element.getAttribute('property') === 'og:url'
@@ -353,12 +396,49 @@ ${slugs
   class HeadRewriter {
     constructor(slug) {
       this.slug = slug;
+      // Get page-specific metadata or use defaults (Issue #11)
+      this.metadata = PAGE_METADATA[slug] || {};
     }
     element(element) {
       // Add canonical URL and robots meta tag for SEO (Issue #8 & #9)
       const canonicalUrl = 'https://' + MY_DOMAIN + (this.slug ? '/' + this.slug : '');
       element.append(\`<link rel="canonical" href="\${canonicalUrl}">\`, { html: true });
       element.append(\`<meta name="robots" content="index, follow">\`, { html: true });
+
+      // Add JSON-LD structured data for rich search results (Issue #10)
+      if (STRUCTURED_DATA_ENABLED) {
+        const pageTitle = this.metadata.title || PAGE_TITLE;
+        const pageDescription = this.metadata.description || PAGE_DESCRIPTION;
+        const structuredData = {
+          "@context": "https://schema.org",
+          "@type": SCHEMA_TYPE,
+          "name": pageTitle,
+          "description": pageDescription,
+          "url": canonicalUrl
+        };
+        // Add publisher info for Article schema type
+        if (SCHEMA_TYPE === 'Article' || SCHEMA_TYPE === 'WebPage') {
+          structuredData.publisher = {
+            "@type": "Organization",
+            "name": ORGANIZATION_NAME || MY_DOMAIN,
+            "url": \`https://\${MY_DOMAIN}\`
+          };
+          if (LOGO_URL) {
+            structuredData.publisher.logo = {
+              "@type": "ImageObject",
+              "url": LOGO_URL
+            };
+          }
+        }
+        // Add Organization-specific fields
+        if (SCHEMA_TYPE === 'Organization') {
+          structuredData.name = ORGANIZATION_NAME || MY_DOMAIN;
+          if (LOGO_URL) {
+            structuredData.logo = LOGO_URL;
+          }
+        }
+        element.append(\`<script type="application/ld+json">\${JSON.stringify(structuredData)}</script>\`, { html: true });
+      }
 
       if (GOOGLE_FONT !== '') {
         element.append(\`<link href="https://fonts.googleapis.com/css?family=\${GOOGLE_FONT.replace(' ', '+')}:Regular,Bold,Italic&display=swap" rel="stylesheet">
