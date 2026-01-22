@@ -39,6 +39,13 @@ export interface AnalyticsOptions {
   facebookPixelId?: string;
 }
 
+export interface CachingOptions {
+  enabled: boolean;
+  htmlTtl?: number;
+  staticAssetsTtl?: number;
+  imageTtl?: number;
+}
+
 export interface CustomHtmlOptions {
   headerHtml?: string;
 }
@@ -73,6 +80,7 @@ export interface CodeData {
   branding: BrandingOptions;
   seo: SeoOptions;
   analytics: AnalyticsOptions;
+  caching: CachingOptions;
   customHtml: CustomHtmlOptions;
   custom404: Custom404Options;
   subdomainRedirects: SubdomainRedirect[];
@@ -105,6 +113,7 @@ export default function code(data: CodeData): string {
     branding,
     seo,
     analytics,
+    caching,
     customHtml,
     custom404,
     subdomainRedirects,
@@ -173,6 +182,15 @@ ${slugs
    */
   const GOOGLE_TAG_ID = '${analytics?.googleTagId || ""}';
   const FACEBOOK_PIXEL_ID = '${analytics?.facebookPixelId || ""}';
+
+  /*
+   * Step 3.5.1: caching configuration (optional)
+   * Add Cache-Control headers for better performance
+   */
+  const CACHING_ENABLED = ${caching?.enabled || false};
+  const HTML_TTL = ${caching?.htmlTtl || 60};
+  const STATIC_ASSETS_TTL = ${caching?.staticAssetsTtl || 86400};
+  const IMAGE_TTL = ${caching?.imageTtl || 604800};
 
   /*
    * Step 3.6: custom HTML header injection (optional)
@@ -271,6 +289,29 @@ ${
       options.cf.image = imageOpts;
     }
     return options;
+  }
+
+  // Apply Cache-Control headers based on content type (Issue #33)
+  function applyCacheHeaders(response, url, contentType) {
+    if (!CACHING_ENABLED) return response;
+
+    const newResponse = new Response(response.body, response);
+    const pathname = url.pathname;
+
+    // Static assets (JS, CSS, fonts)
+    if (pathname.match(/\\.(js|css|woff2?|ttf|eot)$/)) {
+      newResponse.headers.set('Cache-Control', \`public, max-age=\${STATIC_ASSETS_TTL}, immutable\`);
+    }
+    // Images
+    else if (pathname.startsWith('/image') || pathname.match(/\\.(jpg|jpeg|png|gif|webp|avif|svg|ico)$/)) {
+      newResponse.headers.set('Cache-Control', \`public, max-age=\${IMAGE_TTL}\`);
+    }
+    // HTML pages
+    else if (!contentType || contentType.includes('text/html')) {
+      newResponse.headers.set('Cache-Control', \`public, max-age=\${HTML_TTL}, stale-while-revalidate=60\`);
+    }
+
+    return newResponse;
   }
 
   function generateSitemap() {
@@ -375,7 +416,7 @@ ${
       body = rewriteDomainInBody(body);
       response = new Response(body, response);
       response.headers.set('Content-Type', 'application/x-javascript');
-      return response;
+      return applyCacheHeaders(response, url, 'application/javascript');
     } else if (url.pathname.startsWith('/_assets/') && url.pathname.endsWith('.js')) {
       // Handle Notion's new asset paths
       response = await fetch(url.toString());
@@ -383,7 +424,7 @@ ${
       body = rewriteDomainInBody(body);
       response = new Response(body, response);
       response.headers.set('Content-Type', 'application/javascript');
-      return response;
+      return applyCacheHeaders(response, url, 'application/javascript');
     } else if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
       // Proxy getPublicPageData and rewrite domain info
       response = await fetch(url.toString(), {
@@ -450,7 +491,7 @@ ${
       return response;
     } else if (url.pathname.startsWith('/image') && IMAGE_OPTIMIZATION !== 'none') {
       const response = await fetch(url, rewriteImageOptions());
-      return response;
+      return applyCacheHeaders(response, url, 'image');
     } else if (slugs.indexOf(url.pathname.slice(1)) > -1) {
       const pageId = SLUG_TO_PAGE[url.pathname.slice(1)];
        return Response.redirect('https://' + MY_DOMAIN + '/' + pageId, 302);
@@ -481,14 +522,14 @@ ${
       });
       response.headers.delete('Content-Security-Policy');
       response.headers.delete('X-Content-Security-Policy');
-      return appendJavascript(response, SLUG_TO_PAGE, '404');
+      return appendJavascript(response, SLUG_TO_PAGE, '404', url);
     }
 
     // Get current slug from page ID for canonical URL
     const pageId = url.pathname.slice(-32);
     const currentSlug = PAGE_TO_SLUG[pageId] || '';
 
-    return appendJavascript(response, SLUG_TO_PAGE, currentSlug);
+    return appendJavascript(response, SLUG_TO_PAGE, currentSlug, url);
   }
 
   class MetaRewriter {
@@ -798,16 +839,18 @@ ${
     }
   }
 
-  async function appendJavascript(res, SLUG_TO_PAGE, slug) {
+  async function appendJavascript(res, SLUG_TO_PAGE, slug, url) {
     const metaRewriter = new MetaRewriter(slug);
     const headRewriter = new HeadRewriter(slug);
     const linkRewriter = new LinkRewriter();
-    return new HTMLRewriter()
+    const contentType = res.headers.get('content-type');
+    let transformed = new HTMLRewriter()
       .on('title', metaRewriter)
       .on('meta', metaRewriter)
       .on('link', linkRewriter)
       .on('head', headRewriter)
       .on('body', new BodyRewriter(SLUG_TO_PAGE))
       .transform(res);
+    return applyCacheHeaders(transformed, url, contentType);
   }`;
 }

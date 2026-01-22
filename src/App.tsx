@@ -44,6 +44,7 @@ import code, {
   BrandingOptions,
   SeoOptions,
   AnalyticsOptions,
+  CachingOptions,
   CustomHtmlOptions,
   Custom404Options,
   SubdomainRedirect,
@@ -163,6 +164,12 @@ export default function App() {
   const [analytics, setAnalytics] = useState<AnalyticsOptions>({
     googleTagId: "",
     facebookPixelId: "",
+  });
+  const [caching, setCaching] = useState<CachingOptions>({
+    enabled: false,
+    htmlTtl: 60,
+    staticAssetsTtl: 86400,
+    imageTtl: 604800,
   });
   const [customHtml, setCustomHtml] = useState<CustomHtmlOptions>({
     headerHtml: "",
@@ -286,6 +293,17 @@ export default function App() {
   ): void {
     setAnalytics({
       ...analytics,
+      [field]: value,
+    });
+    setCopied(false);
+  }
+
+  function handleCachingChange(
+    field: keyof CachingOptions,
+    value: boolean | number,
+  ): void {
+    setCaching({
+      ...caching,
       [field]: value,
     });
     setCopied(false);
@@ -426,6 +444,7 @@ export default function App() {
     branding,
     seo,
     analytics,
+    caching,
     customHtml,
     custom404,
     subdomainRedirects,
@@ -968,6 +987,78 @@ export default function App() {
                   variant="outlined"
                   size="small"
                 />
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                >
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Cache-Control Headers
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Improve performance with browser caching
+                    </Typography>
+                  </Box>
+                  <Switch
+                    checked={caching.enabled}
+                    onChange={(e) =>
+                      handleCachingChange("enabled", e.target.checked)
+                    }
+                  />
+                </Stack>
+                <Collapse in={caching.enabled} timeout="auto" unmountOnExit>
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="HTML Page TTL (seconds)"
+                      margin="dense"
+                      placeholder="60"
+                      helperText="Cache duration for HTML pages (default: 60s)"
+                      onChange={(e) =>
+                        handleCachingChange("htmlTtl", Number(e.target.value))
+                      }
+                      value={caching.htmlTtl}
+                      variant="outlined"
+                      size="small"
+                    />
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Static Assets TTL (seconds)"
+                      margin="dense"
+                      placeholder="86400"
+                      helperText="Cache duration for JS, CSS, fonts (default: 1 day)"
+                      onChange={(e) =>
+                        handleCachingChange(
+                          "staticAssetsTtl",
+                          Number(e.target.value),
+                        )
+                      }
+                      value={caching.staticAssetsTtl}
+                      variant="outlined"
+                      size="small"
+                    />
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Image TTL (seconds)"
+                      margin="dense"
+                      placeholder="604800"
+                      helperText="Cache duration for images (default: 1 week)"
+                      onChange={(e) =>
+                        handleCachingChange("imageTtl", Number(e.target.value))
+                      }
+                      value={caching.imageTtl}
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Box>
+                </Collapse>
               </Box>
 
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
