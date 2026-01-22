@@ -42,6 +42,7 @@ import code, {
   PageMetadata,
   StructuredDataOptions,
   BrandingOptions,
+  SeoOptions,
   AnalyticsOptions,
   CustomHtmlOptions,
   Custom404Options,
@@ -150,6 +151,9 @@ export default function App() {
     brandReplacement: "",
     twitterHandle: "",
     faviconUrl: "",
+  });
+  const [seo, setSeo] = useState<SeoOptions>({
+    aiAttribution: "",
   });
   const [slugMetadataExpanded, setSlugMetadataExpanded] = useState<
     Record<number, boolean>
@@ -261,6 +265,14 @@ export default function App() {
     setCopied(false);
   }
 
+  function handleSeoChange(field: keyof SeoOptions, value: string): void {
+    setSeo({
+      ...seo,
+      [field]: value,
+    });
+    setCopied(false);
+  }
+
   function handleAnalyticsChange(
     field: keyof AnalyticsOptions,
     value: string,
@@ -356,6 +368,7 @@ export default function App() {
     pageMetadata,
     structuredData,
     branding,
+    seo,
     analytics,
     customHtml,
     custom404,
@@ -835,6 +848,29 @@ export default function App() {
                     handleBrandingChange("faviconUrl", e.target.value)
                   }
                   value={branding.faviconUrl}
+                  variant="outlined"
+                  size="small"
+                />
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                >
+                  SEO & AI Attribution
+                </Typography>
+                <TextField
+                  fullWidth
+                  label="AI Attribution"
+                  margin="dense"
+                  placeholder="Your Name - yourdomain.com"
+                  helperText="Attribution text for AI crawlers (ChatGPT, Claude, Perplexity, etc.)"
+                  onChange={(e) =>
+                    handleSeoChange("aiAttribution", e.target.value)
+                  }
+                  value={seo.aiAttribution}
                   variant="outlined"
                   size="small"
                 />
