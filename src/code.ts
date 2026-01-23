@@ -10,10 +10,17 @@ export interface ImageOptions {
   imageMetadata?: string;
 }
 
+export interface PageAlternate {
+  locale: string;
+  slug: string;
+  url?: string;
+}
+
 export interface PageMetadata {
   title?: string;
   description?: string;
   ogImage?: string;
+  alternates?: PageAlternate[];
 }
 
 export interface StructuredDataOptions {
@@ -80,6 +87,18 @@ export interface RssOptions {
   language?: string;
 }
 
+export interface I18nOptions {
+  enabled: boolean;
+  defaultLocale: string;
+}
+
+export interface OgImageGenerationOptions {
+  enabled: boolean;
+  backgroundColor?: string;
+  textColor?: string;
+  fontSize?: number;
+}
+
 export interface CodeData {
   myDomain: string;
   notionUrl: string;
@@ -102,6 +121,8 @@ export interface CodeData {
   subdomainRedirects: SubdomainRedirect[];
   redirectRules: RedirectRule[];
   rss: RssOptions;
+  i18n: I18nOptions;
+  ogImageGeneration: OgImageGenerationOptions;
 }
 
 function getId(url: string): string {
@@ -137,6 +158,8 @@ export default function code(data: CodeData): string {
     subdomainRedirects,
     redirectRules,
     rss,
+    i18n,
+    ogImageGeneration,
   } = data;
   let url = myDomain.replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
@@ -268,6 +291,22 @@ ${
   const RSS_TITLE = '${rss?.title || ""}';
   const RSS_DESCRIPTION = '${rss?.description || ""}';
   const RSS_LANGUAGE = '${rss?.language || "en-us"}';
+
+  /*
+   * Step 3.10: Internationalization (i18n) configuration (optional)
+   * Add hreflang tags for multilingual SEO
+   */
+  const I18N_ENABLED = ${i18n?.enabled || false};
+  const DEFAULT_LOCALE = '${i18n?.defaultLocale || "en"}';
+
+  /*
+   * Step 3.11: Dynamic OG Image Generation (optional)
+   * Auto-generate Open Graph images from page titles
+   */
+  const OG_IMAGE_GENERATION_ENABLED = ${ogImageGeneration?.enabled || false};
+  const OG_IMAGE_BG_COLOR = '${ogImageGeneration?.backgroundColor || "#1a1a2e"}';
+  const OG_IMAGE_TEXT_COLOR = '${ogImageGeneration?.textColor || "#ffffff"}';
+  const OG_IMAGE_FONT_SIZE = ${ogImageGeneration?.fontSize || 64};
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
   const GOOGLE_FONT = '${googleFont || ""}';
@@ -405,6 +444,40 @@ ${
       .replace(/'/g, '&apos;');
   }
 
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function generateOgImage(slug) {
+    const metadata = PAGE_METADATA[slug] || {};
+    const title = metadata.title || PAGE_TITLE || MY_DOMAIN;
+    const siteName = SITE_NAME || MY_DOMAIN;
+    const escapedTitle = escapeHtml(title);
+    const escapedSiteName = escapeHtml(siteName);
+
+    const svg = \`<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="\${OG_IMAGE_BG_COLOR}"/>
+      <text x="100" y="280" font-size="\${OG_IMAGE_FONT_SIZE}" fill="\${OG_IMAGE_TEXT_COLOR}" font-family="system-ui, -apple-system, sans-serif" font-weight="bold">
+        \${escapedTitle.length > 40 ? escapedTitle.substring(0, 40) + '...' : escapedTitle}
+      </text>
+      <text x="100" y="550" font-size="32" fill="\${OG_IMAGE_TEXT_COLOR}" font-family="system-ui, -apple-system, sans-serif" opacity="0.7">
+        \${escapedSiteName}
+      </text>
+    </svg>\`;
+
+    return new Response(svg, {
+      headers: {
+        'Content-Type': 'image/svg+xml',
+        'Cache-Control': 'public, max-age=604800',
+      },
+    });
+  }
+
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, OPTIONS',
@@ -493,6 +566,11 @@ ${
       let response = new Response(generateRssFeed());
       response.headers.set('content-type', 'application/rss+xml; charset=utf-8');
       return response;
+    }
+    // Handle dynamic OG image generation (Issue #36)
+    if (url.pathname.startsWith('/og-image/') && OG_IMAGE_GENERATION_ENABLED) {
+      const slug = url.pathname.replace('/og-image/', '');
+      return generateOgImage(slug);
     }
     let response;
     if (url.pathname.startsWith('/app') && url.pathname.endsWith('js')) {
@@ -766,6 +844,31 @@ ${
       // Add locale if configured
       if (OG_LOCALE !== '') {
         element.append(\`<meta property="og:locale" content="\${OG_LOCALE}">\`, { html: true });
+      }
+
+      // Add auto-generated OG image if no custom image is set (Issue #36)
+      if (!effectiveOgImage && OG_IMAGE_GENERATION_ENABLED) {
+        const generatedUrl = \`https://\${MY_DOMAIN}/og-image/\${this.slug}\`;
+        element.append(\`<meta property="og:image" content="\${generatedUrl}">\`, { html: true });
+        element.append(\`<meta property="og:image:width" content="1200">\`, { html: true });
+        element.append(\`<meta property="og:image:height" content="630">\`, { html: true });
+        element.append(\`<meta name="twitter:image" content="\${generatedUrl}">\`, { html: true });
+      }
+
+      // Add hreflang tags for multilingual SEO (Issue #35)
+      if (I18N_ENABLED) {
+        // Self-referencing hreflang for current page
+        element.append(\`<link rel="alternate" hreflang="\${DEFAULT_LOCALE}" href="\${canonicalUrl}">\`, { html: true });
+
+        // Add alternate language versions from page metadata
+        const pageAlternates = this.metadata.alternates || [];
+        for (const alt of pageAlternates) {
+          const href = alt.url || \`https://\${MY_DOMAIN}\${alt.slug}\`;
+          element.append(\`<link rel="alternate" hreflang="\${alt.locale}" href="\${href}">\`, { html: true });
+        }
+
+        // x-default for language/region selector pages
+        element.append(\`<link rel="alternate" hreflang="x-default" href="\${canonicalUrl}">\`, { html: true });
       }
 
       // Add AI crawler attribution meta tags (Issue #13)
