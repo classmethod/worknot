@@ -1,6 +1,6 @@
 # Worknot
 
-Host your Notion Site on a custom domain with Cloudflare Workers. Maintained by [Classmethod](https://classmethod.jp/) - a Cloudflare and Notion partner.
+Host your Notion Site on a custom domain with Cloudflare Workers. Maintained by [Classmethod Europe](https://classmethod.de/) - a Cloudflare and Notion partner.
 
 ## Features
 
