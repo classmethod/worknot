@@ -47,6 +47,7 @@ import code, {
   CodeData,
   ImageOptions,
   PageMetadata,
+  PageAlternate,
   StructuredDataOptions,
   BrandingOptions,
   SocialPreviewOptions,
@@ -58,6 +59,8 @@ import code, {
   SubdomainRedirect,
   RedirectRule,
   RssOptions,
+  I18nOptions,
+  OgImageGenerationOptions,
 } from "./code";
 import "./styles.css";
 
@@ -203,6 +206,17 @@ export default function App() {
     description: "",
     language: "en-us",
   });
+  const [i18n, setI18n] = useState<I18nOptions>({
+    enabled: false,
+    defaultLocale: "en",
+  });
+  const [ogImageGeneration, setOgImageGeneration] =
+    useState<OgImageGenerationOptions>({
+      enabled: false,
+      backgroundColor: "#1a1a2e",
+      textColor: "#ffffff",
+      fontSize: 64,
+    });
 
   function createInputHandler<T>(
     setter: React.Dispatch<React.SetStateAction<T>>,
@@ -304,6 +318,55 @@ export default function App() {
   const handleCustomHtmlChange = createFieldHandler(setCustomHtml, customHtml);
   const handleCustom404Change = createFieldHandler(setCustom404, custom404);
   const handleRssChange = createFieldHandler(setRss, rss);
+  const handleI18nChange = createFieldHandler(setI18n, i18n);
+  const handleOgImageGenerationChange = createFieldHandler(
+    setOgImageGeneration,
+    ogImageGeneration,
+  );
+
+  function handlePageAlternate(
+    slug: string,
+    index: number,
+    field: keyof PageAlternate,
+    value: string,
+  ): void {
+    const currentAlternates = pageMetadata[slug]?.alternates || [];
+    const updatedAlternates = currentAlternates.map((alt, i) =>
+      i === index ? { ...alt, [field]: value } : alt,
+    );
+    setPageMetadata({
+      ...pageMetadata,
+      [slug]: {
+        ...pageMetadata[slug],
+        alternates: updatedAlternates,
+      },
+    });
+    setCopied(false);
+  }
+
+  function addPageAlternate(slug: string): void {
+    const currentAlternates = pageMetadata[slug]?.alternates || [];
+    setPageMetadata({
+      ...pageMetadata,
+      [slug]: {
+        ...pageMetadata[slug],
+        alternates: [...currentAlternates, { locale: "", slug: "" }],
+      },
+    });
+    setCopied(false);
+  }
+
+  function deletePageAlternate(slug: string, index: number): void {
+    const currentAlternates = pageMetadata[slug]?.alternates || [];
+    setPageMetadata({
+      ...pageMetadata,
+      [slug]: {
+        ...pageMetadata[slug],
+        alternates: currentAlternates.filter((_, i) => i !== index),
+      },
+    });
+    setCopied(false);
+  }
 
   function addSubdomainRedirect(): void {
     setSubdomainRedirects([
@@ -425,6 +488,8 @@ export default function App() {
     subdomainRedirects,
     redirectRules,
     rss,
+    i18n,
+    ogImageGeneration,
   };
 
   const script = noError ? code(codeData) : undefined;
@@ -754,6 +819,76 @@ export default function App() {
                     variant="outlined"
                     size="small"
                   />
+                  {i18n.enabled && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Alternate Language Versions (hreflang)
+                      </Typography>
+                      {(pageMetadata[customUrl]?.alternates || []).map(
+                        (alt, altIndex) => (
+                          <Stack
+                            key={altIndex}
+                            direction="row"
+                            spacing={1}
+                            alignItems="flex-start"
+                            sx={{ mt: 1 }}
+                          >
+                            <TextField
+                              label="Locale"
+                              placeholder="ja, de, fr"
+                              value={alt.locale}
+                              onChange={(e) =>
+                                handlePageAlternate(
+                                  customUrl,
+                                  altIndex,
+                                  "locale",
+                                  e.target.value,
+                                )
+                              }
+                              variant="outlined"
+                              size="small"
+                              sx={{ width: "100px" }}
+                            />
+                            <TextField
+                              label="Slug or URL"
+                              placeholder="/ja/about or https://..."
+                              value={alt.slug}
+                              onChange={(e) =>
+                                handlePageAlternate(
+                                  customUrl,
+                                  altIndex,
+                                  "slug",
+                                  e.target.value,
+                                )
+                              }
+                              variant="outlined"
+                              size="small"
+                              sx={{ flex: 1 }}
+                            />
+                            <Button
+                              onClick={() =>
+                                deletePageAlternate(customUrl, altIndex)
+                              }
+                              color="error"
+                              size="small"
+                              sx={{ minWidth: "auto", px: 1 }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </Button>
+                          </Stack>
+                        ),
+                      )}
+                      <Button
+                        onClick={() => addPageAlternate(customUrl)}
+                        size="small"
+                        variant="text"
+                        startIcon={<AddIcon />}
+                        sx={{ mt: 1 }}
+                      >
+                        Add Alternate
+                      </Button>
+                    </Box>
+                  )}
                 </Box>
               </Collapse>
             </Paper>
@@ -1504,6 +1639,137 @@ export default function App() {
                     <Alert severity="info" sx={{ mt: 1 }}>
                       RSS feed will include all pages defined in Pretty Links.
                       Add page metadata for better feed content.
+                    </Alert>
+                  </Box>
+                </Collapse>
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                >
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Internationalization (i18n)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Add hreflang tags for multilingual SEO
+                    </Typography>
+                  </Box>
+                  <Switch
+                    checked={i18n.enabled}
+                    onChange={(e) =>
+                      handleI18nChange("enabled", e.target.checked)
+                    }
+                  />
+                </Stack>
+                <Collapse in={i18n.enabled} timeout="auto" unmountOnExit>
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="Default Locale"
+                      margin="dense"
+                      placeholder="en"
+                      helperText="Primary language code (e.g., en, ja, de)"
+                      onChange={(e) =>
+                        handleI18nChange("defaultLocale", e.target.value)
+                      }
+                      value={i18n.defaultLocale}
+                      variant="outlined"
+                      size="small"
+                    />
+                    <Alert severity="info" sx={{ mt: 1 }}>
+                      Configure alternate language versions in each page's SEO
+                      settings. Hreflang tags help search engines serve the
+                      correct language version to users.
+                    </Alert>
+                  </Box>
+                </Collapse>
+              </Box>
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                >
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Auto-Generate OG Images
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Create Open Graph images from page titles
+                    </Typography>
+                  </Box>
+                  <Switch
+                    checked={ogImageGeneration.enabled}
+                    onChange={(e) =>
+                      handleOgImageGenerationChange("enabled", e.target.checked)
+                    }
+                  />
+                </Stack>
+                <Collapse
+                  in={ogImageGeneration.enabled}
+                  timeout="auto"
+                  unmountOnExit
+                >
+                  <Box sx={{ mt: 2 }}>
+                    <Stack direction="row" spacing={2}>
+                      <TextField
+                        label="Background Color"
+                        margin="dense"
+                        placeholder="#1a1a2e"
+                        helperText="Hex color code"
+                        onChange={(e) =>
+                          handleOgImageGenerationChange(
+                            "backgroundColor",
+                            e.target.value,
+                          )
+                        }
+                        value={ogImageGeneration.backgroundColor}
+                        variant="outlined"
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        label="Text Color"
+                        margin="dense"
+                        placeholder="#ffffff"
+                        helperText="Hex color code"
+                        onChange={(e) =>
+                          handleOgImageGenerationChange(
+                            "textColor",
+                            e.target.value,
+                          )
+                        }
+                        value={ogImageGeneration.textColor}
+                        variant="outlined"
+                        size="small"
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        type="number"
+                        label="Font Size"
+                        margin="dense"
+                        placeholder="64"
+                        helperText="Title font size"
+                        onChange={(e) =>
+                          handleOgImageGenerationChange(
+                            "fontSize",
+                            Number(e.target.value),
+                          )
+                        }
+                        value={ogImageGeneration.fontSize}
+                        variant="outlined"
+                        size="small"
+                        sx={{ width: "120px" }}
+                      />
+                    </Stack>
+                    <Alert severity="info" sx={{ mt: 1 }}>
+                      Auto-generated OG images are used when no custom image is
+                      set. Images are served as SVG at /og-image/[slug].
                     </Alert>
                   </Box>
                 </Collapse>
