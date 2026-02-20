@@ -689,7 +689,8 @@ ${
     }
 
     // Get current slug from page ID for canonical URL
-    const pageId = url.pathname.slice(-32);
+    const pageIdMatch = url.pathname.match(/[0-9a-f]{32}/);
+    const pageId = pageIdMatch ? pageIdMatch[0] : '';
     const currentSlug = PAGE_TO_SLUG[pageId] || '';
 
     return appendJavascript(response, SLUG_TO_PAGE, currentSlug, url);
@@ -958,7 +959,8 @@ ${
         PAGE_TO_SLUG[page] = slug;
       });
       function getPage() {
-        return location.pathname.slice(-32);
+        const match = location.pathname.match(/[0-9a-f]{32}/);
+        return match ? match[0] : '';
       }
       function getSlug() {
         return location.pathname.slice(1);
@@ -1027,8 +1029,9 @@ ${
       const pushState = window.history.pushState;
       window.history.pushState = function(state) {
         const dest = new URL(location.protocol + location.host + arguments[2]);
-        const id = dest.pathname.slice(-32);
-        if (pages.includes(id)) {
+        const idMatch = dest.pathname.match(/[0-9a-f]{32}/);
+        const id = idMatch ? idMatch[0] : '';
+        if (id && pages.includes(id)) {
           arguments[2] = '/' + PAGE_TO_SLUG[id];
         }
         return pushState.apply(window.history, arguments);
