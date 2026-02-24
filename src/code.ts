@@ -1038,7 +1038,7 @@ ${
       };
       const open = window.XMLHttpRequest.prototype.open;
       window.XMLHttpRequest.prototype.open = function() {
-        arguments[1] = arguments[1].replace('\${MY_DOMAIN}', 'www.notion.so');
+        arguments[1] = arguments[1].replace('\${MY_DOMAIN}', '\${NOTION_SITE_DOMAIN}');
         return open.apply(this, [].slice.call(arguments));
       };
     </script>\${CUSTOM_SCRIPT}<style>\${CUSTOM_CSS}\</style>\`, {
