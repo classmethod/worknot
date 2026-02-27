@@ -502,23 +502,18 @@ ${
     }
   }
 
-  // Extract Notion site domain from the original Notion URL
   const NOTION_SITE_DOMAIN = (() => {
     try {
-      const notionHost = new URL('${notionUrl}').hostname;
-      return notionHost;
+      return new URL('${notionUrl}').hostname;
     } catch {
       return 'www.notion.so';
     }
   })();
 
-  // Rewrite domain references in API response body
   function rewriteDomainInBody(body) {
-    // Replace *.notion.site domain with custom domain
-    let result = body.replace(/[a-z0-9-]+\\.notion\\.site/g, MY_DOMAIN);
-    // Also replace www.notion.so references
-    result = result.replace(/www\\.notion\\.so/g, MY_DOMAIN);
-    return result;
+    return body
+      .replace(/[a-z0-9-]+\\.notion\\.site/g, MY_DOMAIN)
+      .replace(/www\\.notion\\.so/g, MY_DOMAIN);
   }
 
   async function fetchAndApply(request) {
@@ -573,15 +568,9 @@ ${
       return generateOgImage(slug);
     }
     let response;
-    if (url.pathname.startsWith('/app') && url.pathname.endsWith('js')) {
-      response = await fetch(url.toString());
-      let body = await response.text();
-      body = rewriteDomainInBody(body);
-      response = new Response(body, response);
-      response.headers.set('Content-Type', 'application/x-javascript');
-      return applyCacheHeaders(response, url, 'application/javascript');
-    } else if (url.pathname.startsWith('/_assets/') && url.pathname.endsWith('.js')) {
-      // Handle Notion's new asset paths
+    const isAppJs = url.pathname.startsWith('/app') && url.pathname.endsWith('js');
+    const isAssetJs = url.pathname.startsWith('/_assets/') && url.pathname.endsWith('.js');
+    if (isAppJs || isAssetJs) {
       response = await fetch(url.toString());
       let body = await response.text();
       body = rewriteDomainInBody(body);
@@ -618,26 +607,7 @@ ${
       response.headers.set('Access-Control-Allow-Origin', '*');
       response.headers.delete('Content-Security-Policy');
       return response;
-    } else if (url.pathname.startsWith('/api/v3/syncRecordValuesMain') ||
-               url.pathname.startsWith('/api/v3/syncRecordValuesSpaceInitial') ||
-               url.pathname.startsWith('/api/v3/getPublicSpaceData')) {
-      // Rewrite domain info in sync/space API responses to prevent redirect
-      response = await fetch(url.toString(), {
-        body: request.body,
-        headers: {
-          'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        method: 'POST',
-      });
-      let body = await response.text();
-      body = rewriteDomainInBody(body);
-      response = new Response(body, response);
-      response.headers.set('Access-Control-Allow-Origin', '*');
-      response.headers.delete('Content-Security-Policy');
-      return response;
-    } else if ((url.pathname.startsWith('/api'))) {
-      // Forward other API requests
+    } else if (url.pathname.startsWith('/api')) {
       response = await fetch(url.toString(), {
         body: request.body,
         headers: {
@@ -657,7 +627,7 @@ ${
       return applyCacheHeaders(response, url, 'image');
     } else if (slugs.indexOf(url.pathname.slice(1)) > -1) {
       const pageId = SLUG_TO_PAGE[url.pathname.slice(1)];
-       return Response.redirect('https://' + MY_DOMAIN + '/' + pageId, 302);
+      return Response.redirect('https://' + MY_DOMAIN + '/' + pageId, 302);
     } else {
       response = await fetch(url.toString(), {
         body: request.body,
