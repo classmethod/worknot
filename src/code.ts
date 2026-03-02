@@ -626,8 +626,18 @@ ${
       const response = await fetch(url, rewriteImageOptions());
       return applyCacheHeaders(response, url, 'image');
     } else if (slugs.indexOf(url.pathname.slice(1)) > -1) {
-      const pageId = SLUG_TO_PAGE[url.pathname.slice(1)];
-      return Response.redirect('https://' + MY_DOMAIN + '/' + pageId, 302);
+      const matchedSlug = url.pathname.slice(1);
+      const pageId = SLUG_TO_PAGE[matchedSlug];
+      url.pathname = '/' + pageId;
+      response = await fetch(url.toString(), {
+        body: request.body,
+        headers: request.headers,
+        method: request.method,
+      });
+      response = new Response(response.body, response);
+      response.headers.delete('Content-Security-Policy');
+      response.headers.delete('X-Content-Security-Policy');
+      return appendJavascript(response, SLUG_TO_PAGE, matchedSlug, url);
     } else {
       response = await fetch(url.toString(), {
         body: request.body,
@@ -991,6 +1001,23 @@ ${
         childList: true,
         subtree: true,
       });
+      setTimeout(function() {
+        if (!redirected) {
+          redirected = true;
+          updateSlug();
+          const onpopstate = window.onpopstate;
+          window.onpopstate = function() {
+            if (slugs.includes(getSlug())) {
+              const page = SLUG_TO_PAGE[getSlug()];
+              if (page) {
+                history.replaceState(history.state, 'bypass', '/' + page);
+              }
+            }
+            onpopstate.apply(this, [].slice.call(arguments));
+            updateSlug();
+          };
+        }
+      }, 2000);
       const replaceState = window.history.replaceState;
       window.history.replaceState = function(state) {
         if (arguments[1] !== 'bypass' && slugs.includes(getSlug())) return;
