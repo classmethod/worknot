@@ -516,6 +516,12 @@ ${
       .replace(/www\\.notion\\.so/g, MY_DOMAIN);
   }
 
+  const PAGE_FETCH_HEADERS = {
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'accept-language': 'en-US,en;q=0.9'
+  };
+
   async function fetchAndApply(request) {
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
@@ -630,9 +636,7 @@ ${
       const pageId = SLUG_TO_PAGE[matchedSlug];
       url.pathname = '/' + pageId;
       response = await fetch(url.toString(), {
-        body: request.body,
-        headers: request.headers,
-        method: request.method,
+        headers: PAGE_FETCH_HEADERS,
       });
       response = new Response(response.body, response);
       response.headers.delete('Content-Security-Policy');
@@ -640,9 +644,7 @@ ${
       return appendJavascript(response, SLUG_TO_PAGE, matchedSlug, url);
     } else {
       response = await fetch(url.toString(), {
-        body: request.body,
-        headers: request.headers,
-        method: request.method,
+        headers: PAGE_FETCH_HEADERS,
       });
       response = new Response(response.body, response);
       response.headers.delete('Content-Security-Policy');
@@ -654,8 +656,7 @@ ${
       const notFoundUrl = new URL(url);
       notFoundUrl.pathname = '/' + CUSTOM_404_PAGE_ID;
       const notFoundResponse = await fetch(notFoundUrl.toString(), {
-        headers: request.headers,
-        method: 'GET',
+        headers: PAGE_FETCH_HEADERS,
       });
       // Return custom 404 page content with 404 status
       response = new Response(notFoundResponse.body, {
