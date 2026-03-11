@@ -346,9 +346,11 @@ ${
     PAGE_TO_SLUG[page] = slug;
   });
 
-  addEventListener('fetch', event => {
-    event.respondWith(fetchAndApply(event.request));
-  });
+  export default {
+    async fetch(request) {
+      return fetchAndApply(request);
+    }
+  };
 
   function rewriteImageOptions() {
     let options = {cf:{}};
@@ -453,19 +455,26 @@ ${
       .replace(/'/g, '&#039;');
   }
 
+  function sanitizeColor(color) {
+    return /^#[0-9a-fA-F]{3,8}$/.test(color) ? color : '#000000';
+  }
+
   function generateOgImage(slug) {
     const metadata = PAGE_METADATA[slug] || {};
     const title = metadata.title || PAGE_TITLE || MY_DOMAIN;
     const siteName = SITE_NAME || MY_DOMAIN;
     const escapedTitle = escapeHtml(title);
     const escapedSiteName = escapeHtml(siteName);
+    const bgColor = sanitizeColor(OG_IMAGE_BG_COLOR);
+    const textColor = sanitizeColor(OG_IMAGE_TEXT_COLOR);
+    const fontSize = Math.max(12, Math.min(200, parseInt(OG_IMAGE_FONT_SIZE) || 64));
 
     const svg = \`<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="\${OG_IMAGE_BG_COLOR}"/>
-      <text x="100" y="280" font-size="\${OG_IMAGE_FONT_SIZE}" fill="\${OG_IMAGE_TEXT_COLOR}" font-family="system-ui, -apple-system, sans-serif" font-weight="bold">
+      <rect width="100%" height="100%" fill="\${bgColor}"/>
+      <text x="100" y="280" font-size="\${fontSize}" fill="\${textColor}" font-family="system-ui, -apple-system, sans-serif" font-weight="bold">
         \${escapedTitle.length > 40 ? escapedTitle.substring(0, 40) + '...' : escapedTitle}
       </text>
-      <text x="100" y="550" font-size="32" fill="\${OG_IMAGE_TEXT_COLOR}" font-family="system-ui, -apple-system, sans-serif" opacity="0.7">
+      <text x="100" y="550" font-size="32" fill="\${textColor}" font-family="system-ui, -apple-system, sans-serif" opacity="0.7">
         \${escapedSiteName}
       </text>
     </svg>\`;
@@ -517,7 +526,7 @@ ${
   }
 
   const PAGE_FETCH_HEADERS = {
-    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'accept-language': 'en-US,en;q=0.9'
   };
@@ -526,6 +535,21 @@ ${
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
     }
+    try {
+      return await handleRequest(request);
+    } catch (error) {
+      return new Response(
+        \`<!DOCTYPE html><html><head><title>Service Unavailable</title></head>
+        <body style="font-family:system-ui;text-align:center;padding:60px 20px">
+        <h1>502 Bad Gateway</h1>
+        <p>The upstream server is temporarily unavailable. Please try again later.</p>
+        </body></html>\`,
+        { status: 502, headers: { 'Content-Type': 'text/html;charset=UTF-8' } }
+      );
+    }
+  }
+
+  async function handleRequest(request) {
     let url = new URL(request.url);
 
     // Handle subdomain redirects (Issue #15)
@@ -581,15 +605,15 @@ ${
       let body = await response.text();
       body = rewriteDomainInBody(body);
       response = new Response(body, response);
-      response.headers.set('Content-Type', 'application/javascript');
-      return applyCacheHeaders(response, url, 'application/javascript');
+      response.headers.set('Content-Type', 'text/javascript');
+      return applyCacheHeaders(response, url, 'text/javascript');
     } else if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
       // Proxy getPublicPageData and rewrite domain info
       response = await fetch(url.toString(), {
         body: request.body,
         headers: {
           'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
         },
         method: 'POST',
       });
@@ -618,7 +642,7 @@ ${
         body: request.body,
         headers: {
           'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
         },
         method: 'POST',
       });
