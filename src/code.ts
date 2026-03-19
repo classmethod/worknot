@@ -525,9 +525,14 @@ ${
       .replace(/www\\.notion\\.so/g, MY_DOMAIN);
   }
 
+  // Compute parent domain for publicDomainName rewrite
+  // e.g., "sensitive-information.classmethod.live" → "classmethod.live"
+  // This allows Notion's client to extract the subdomain as the space domain
+  const PARENT_DOMAIN = MY_DOMAIN.split('.').slice(1).join('.');
+
   function rewriteJsBody(body) {
     return rewriteDomainInBody(body)
-      .replace(/"notion\\.site"/g, '"' + MY_DOMAIN + '"');
+      .replace(/"notion\\.site"/g, '"' + PARENT_DOMAIN + '"');
   }
 
   const PAGE_FETCH_HEADERS = {
