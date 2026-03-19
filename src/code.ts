@@ -525,6 +525,11 @@ ${
       .replace(/www\\.notion\\.so/g, MY_DOMAIN);
   }
 
+  function rewriteJsBody(body) {
+    return rewriteDomainInBody(body)
+      .replace(/publicDomainName:"notion\\.site"/g, 'publicDomainName:"' + MY_DOMAIN + '"');
+  }
+
   const PAGE_FETCH_HEADERS = {
     'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -603,7 +608,7 @@ ${
     if (isAppJs || isAssetJs) {
       response = await fetch(url.toString());
       let body = await response.text();
-      body = rewriteDomainInBody(body);
+      body = rewriteJsBody(body);
       response = new Response(body, response);
       response.headers.set('Content-Type', 'text/javascript');
       return applyCacheHeaders(response, url, 'text/javascript');
