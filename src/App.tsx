@@ -596,7 +596,8 @@ export default function App() {
               lineHeight: 1.6,
             }}
           >
-            Always up-to-date with the latest Notion Site specifications
+            Full SEO control, custom branding, analytics, and automatic
+            compatibility with the latest Notion updates
           </Typography>
         </Container>
       </Box>
@@ -622,32 +623,32 @@ export default function App() {
             <FeatureCard
               icon={<LanguageIcon sx={{ fontSize: 40 }} />}
               title="Custom Domain"
-              description="Host your Notion Site on your own domain"
+              description="Host your Notion Site on your own domain with pretty URLs"
             />
             <FeatureCard
               icon={<UpdateIcon sx={{ fontSize: 40 }} />}
-              title="Always Up-to-Date"
-              description="Follows latest Notion Site specifications"
+              title="Auto-Compatible"
+              description="Adapts to Notion client updates with daily monitoring"
             />
             <FeatureCard
               icon={<SpeedIcon sx={{ fontSize: 40 }} />}
-              title="Global CDN"
-              description="Fast delivery via Cloudflare edge network"
+              title="SEO & Analytics"
+              description="Open Graph, JSON-LD, sitemap, GA4, and Facebook Pixel"
             />
             <FeatureCard
               icon={<ImageIcon sx={{ fontSize: 40 }} />}
               title="Image Optimization"
-              description="Resize, convert, and compress images"
+              description="Resize, convert, and compress via Cloudflare CDN"
             />
             <FeatureCard
               icon={<CodeIcon sx={{ fontSize: 40 }} />}
-              title="Custom Code"
-              description="Inject your own CSS and JavaScript"
+              title="Full Customization"
+              description="Custom CSS, JS, fonts, favicon, headers, and 404 pages"
             />
             <FeatureCard
               icon={<VerifiedIcon sx={{ fontSize: 40 }} />}
               title="Partner Maintained"
-              description="By Classmethod, a Cloudflare & Notion partner"
+              description="By Classmethod, a Cloudflare and Notion partner"
             />
           </Box>
         </Paper>
