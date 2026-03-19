@@ -1,0 +1,15 @@
+{
+  "notion_version": "23.13.20260318.1948",
+  "app_js_filename": "app-7811d0ed71f9c768.js",
+  "asset_js_count": 1,
+  "public_domain_name_count": 2,
+  "notion_site_literal_count": 1,
+  "external_domain_count": 1,
+  "require_interstitial_count": 0,
+  "domain_check_hash": "e993fe5e2995195ad5f52112b9d4e58114fca08ba6aea7c928eac55914126feb",
+  "config_pattern": "publicDomainName:\"notion.site\"",
+  "has_endswith_check": 1,
+  "has_dot_endswith_check": 2,
+  "api_fields": "betaEnabled,canRequestAccess,isDLSViewer,isDeleted,isEditableOrCommentableSite,isPublicShareLink,publicAccessRole,publicDomainName,requireLogin,securitySettings,spaceDomain,spaceId,spaceName,spaceShortId,userHasExplicitAccess,",
+  "snapshot_date": "2026-03-19"
+}
