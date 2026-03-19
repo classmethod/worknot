@@ -634,6 +634,14 @@ ${
       // Rewrite request body: replace custom space domain with original Notion space domain
       let reqBody = await request.text();
       reqBody = reqBody.replace(new RegExp(CUSTOM_SPACE_DOMAIN, 'g'), NOTION_SPACE_DOMAIN);
+      // Inject root page blockId if not present (client sends spaceDomain only for root URL)
+      try {
+        const reqJson = JSON.parse(reqBody);
+        if (!reqJson.blockId && SLUG_TO_PAGE['']) {
+          reqJson.blockId = SLUG_TO_PAGE[''].replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+          reqBody = JSON.stringify(reqJson);
+        }
+      } catch (e) {}
       // Proxy getPublicPageData and rewrite domain info
       response = await fetch(url.toString(), {
         body: reqBody,
