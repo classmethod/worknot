@@ -530,6 +530,14 @@ ${
   // This allows Notion's client to extract the subdomain as the space domain
   const PARENT_DOMAIN = MY_DOMAIN.split('.').slice(1).join('.');
 
+  // The custom subdomain that Notion's client extracts from the hostname
+  // e.g., "sensitive-information" from "sensitive-information.classmethod.live"
+  const CUSTOM_SPACE_DOMAIN = MY_DOMAIN.split('.')[0];
+
+  // The original Notion space domain from the Notion site URL
+  // e.g., "succinct-scar-f20" from "succinct-scar-f20.notion.site"
+  const NOTION_SPACE_DOMAIN = NOTION_SITE_DOMAIN.split('.')[0];
+
   function rewriteJsBody(body) {
     return rewriteDomainInBody(body)
       .replace(/"notion\\.site"/g, '"' + PARENT_DOMAIN + '"');
@@ -623,9 +631,12 @@ ${
       response.headers.set('Content-Type', 'text/javascript');
       return applyCacheHeaders(response, url, 'text/javascript');
     } else if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
+      // Rewrite request body: replace custom space domain with original Notion space domain
+      let reqBody = await request.text();
+      reqBody = reqBody.replace(new RegExp(CUSTOM_SPACE_DOMAIN, 'g'), NOTION_SPACE_DOMAIN);
       // Proxy getPublicPageData and rewrite domain info
       response = await fetch(url.toString(), {
-        body: request.body,
+        body: reqBody,
         headers: {
           'content-type': 'application/json;charset=UTF-8',
           'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
@@ -638,8 +649,8 @@ ${
       // Also rewrite specific fields that cause redirects or interstitial pages
       try {
         const json = JSON.parse(body);
-        if (json.spaceDomain) json.spaceDomain = MY_DOMAIN.split('.')[0];
-        if (json.publicDomainName) json.publicDomainName = MY_DOMAIN;
+        if (json.spaceDomain) json.spaceDomain = CUSTOM_SPACE_DOMAIN;
+        if (json.publicDomainName) json.publicDomainName = PARENT_DOMAIN;
         // Remove requireInterstitial to prevent "page not found" error
         delete json.requireInterstitial;
         // Set requestedOnExternalDomain to false to avoid external domain checks
@@ -653,8 +664,11 @@ ${
       response.headers.delete('Content-Security-Policy');
       return response;
     } else if (url.pathname.startsWith('/api')) {
+      // Rewrite request body: replace custom space domain with original Notion space domain
+      let reqBody = await request.text();
+      reqBody = reqBody.replace(new RegExp(CUSTOM_SPACE_DOMAIN, 'g'), NOTION_SPACE_DOMAIN);
       response = await fetch(url.toString(), {
-        body: request.body,
+        body: reqBody,
         headers: {
           'content-type': 'application/json;charset=UTF-8',
           'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
@@ -663,6 +677,8 @@ ${
       });
       let body = await response.text();
       body = rewriteDomainInBody(body);
+      // Rewrite Notion space domain back to custom domain in response
+      body = body.replace(new RegExp(NOTION_SPACE_DOMAIN, 'g'), CUSTOM_SPACE_DOMAIN);
       response = new Response(body, response);
       response.headers.set('Access-Control-Allow-Origin', '*');
       response.headers.delete('Content-Security-Policy');
