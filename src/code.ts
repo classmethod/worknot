@@ -527,7 +527,7 @@ ${
 
   function rewriteJsBody(body) {
     return rewriteDomainInBody(body)
-      .replace(/publicDomainName:"notion\\.site"/g, 'publicDomainName:"' + MY_DOMAIN + '"');
+      .replace(/"notion\\.site"/g, '"' + MY_DOMAIN + '"');
   }
 
   const PAGE_FETCH_HEADERS = {
@@ -580,6 +580,11 @@ ${
           : 'https://' + MY_DOMAIN + rule.to;
         return Response.redirect(redirectUrl, rule.permanent ? 301 : 302);
       }
+    }
+
+    // Intercept Notion login redirect - redirect back to root
+    if (url.pathname === '/login') {
+      return Response.redirect('https://' + MY_DOMAIN + '/', 302);
     }
 
     // Use the original Notion site domain instead of www.notion.so
