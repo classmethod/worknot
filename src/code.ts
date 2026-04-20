@@ -634,12 +634,31 @@ ${
       // Rewrite request body: replace custom space domain with original Notion space domain
       let reqBody = await request.text();
       reqBody = reqBody.replace(new RegExp(CUSTOM_SPACE_DOMAIN, 'g'), NOTION_SPACE_DOMAIN);
-      // Inject root page blockId if not present (client sends spaceDomain only for root URL)
+      // Inject correct blockId if absent. The client omits blockId whenever the
+      // browser URL doesn't contain a 32-hex page ID (root "/" and pretty slugs
+      // like "/about"). Without this, all slug pages render the root page (#90).
       try {
         const reqJson = JSON.parse(reqBody);
-        if (!reqJson.blockId && SLUG_TO_PAGE['']) {
-          reqJson.blockId = SLUG_TO_PAGE[''].replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
-          reqBody = JSON.stringify(reqJson);
+        if (!reqJson.blockId) {
+          let pageId = '';
+          const referer = request.headers.get('Referer');
+          if (referer) {
+            try {
+              const refPath = new URL(referer).pathname;
+              const slug = decodeURIComponent(refPath.slice(1));
+              if (SLUG_TO_PAGE.hasOwnProperty(slug)) {
+                pageId = SLUG_TO_PAGE[slug];
+              } else {
+                const match = refPath.match(/[0-9a-f]{32}/);
+                if (match) pageId = match[0];
+              }
+            } catch (e) {}
+          }
+          if (!pageId) pageId = SLUG_TO_PAGE[''] || '';
+          if (pageId) {
+            reqJson.blockId = pageId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+            reqBody = JSON.stringify(reqJson);
+          }
         }
       } catch (e) {}
       // Proxy getPublicPageData and rewrite domain info
