@@ -69,7 +69,7 @@ const DEFAULT_NOTION_URL =
   "https://succinct-scar-f20.notion.site/Sample-Web-Site-148f2fc322e74473a91fb4d90836e3ce";
 
 const DOMAIN_PATTERN =
-  /^((https:\/\/)|(http:\/\/))?[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9](?:\.[a-zA-Z]{2,})+(\/)?$/;
+  /^(https?:\/\/)?([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\/?$/;
 const NOTION_ID_PATTERN = /[0-9a-f]{32}/;
 
 function isValidDomain(domain: string): boolean {
