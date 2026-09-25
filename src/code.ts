@@ -757,6 +757,10 @@ ${
     if (isUnknownPageNavigation(request, url.pathname)) {
       return notFoundResponse(url);
     }
+    // The Notion client would load the page ID from the URL, so skip the custom 404 page
+    if (await isForeignPageNavigation(request, url.pathname)) {
+      return notFoundResponse(url, true);
+    }
     let response;
     const isAppJs = url.pathname.startsWith('/app') && url.pathname.endsWith('js');
     const isAssetJs = url.pathname.startsWith('/_assets/') && url.pathname.endsWith('.js');
@@ -1305,8 +1309,39 @@ ${
     return !SLUG_TO_PAGE.hasOwnProperty(path) && !SLUG_TO_PAGE.hasOwnProperty(pathname.slice(1));
   }
 
-  async function notFoundResponse(url) {
-    if (CUSTOM_404_PAGE_ID === '') {
+  // Any public Notion page renders when its ID is requested on this domain, so
+  // check that unmapped page IDs belong to this site's workspace. Cached per isolate.
+  const pageIsForeign = new Map();
+
+  async function isForeignPageNavigation(request, pathname) {
+    const match = pathname.match(/[0-9a-f]{32}/);
+    if (!match || PAGE_TO_SLUG[match[0]] !== undefined || !NOTION_SITE_DOMAIN.endsWith('.notion.site')) return false;
+    if (!isPageNavigation(request) || NON_PAGE_PATH.test(pathname)) return false;
+    const pageId = match[0];
+    if (pageIsForeign.has(pageId)) return pageIsForeign.get(pageId);
+    let foreign = false;
+    try {
+      const response = await fetch('https://' + NOTION_SITE_DOMAIN + '/api/v3/getPublicPageData', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'user-agent': PAGE_FETCH_HEADERS['user-agent'] },
+        body: JSON.stringify({
+          type: 'block-space',
+          name: 'page',
+          blockId: pageId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5'),
+          spaceDomain: NOTION_SPACE_DOMAIN,
+          requestedOnPublicDomain: true,
+        }),
+      });
+      const data = await response.json();
+      foreign = !!data.spaceDomain && data.spaceDomain !== NOTION_SPACE_DOMAIN && data.publicDomainName !== NOTION_SPACE_DOMAIN;
+    } catch (e) {}
+    if (pageIsForeign.size > 1000) pageIsForeign.clear();
+    pageIsForeign.set(pageId, foreign);
+    return foreign;
+  }
+
+  async function notFoundResponse(url, plain) {
+    if (plain || CUSTOM_404_PAGE_ID === '') {
       return new Response(
         \`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Page not found</title></head>
         <body style="font-family:system-ui;text-align:center;padding:60px 20px">
