@@ -176,6 +176,7 @@ export default function App() {
   });
   const [seo, setSeo] = useState<SeoOptions>({
     aiAttribution: "",
+    robotsRules: "",
   });
   const [slugMetadataExpanded, setSlugMetadataExpanded] = useState<
     Record<number, boolean>
@@ -1153,6 +1154,19 @@ export default function App() {
                     handleSeoChange("aiAttribution", e.target.value)
                   }
                   value={seo.aiAttribution}
+                  variant="outlined"
+                  size="small"
+                />
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label="robots.txt Rules"
+                  margin="dense"
+                  placeholder={"User-agent: *\nAllow: /"}
+                  helperText="Custom robots.txt rules. The sitemap line is added automatically."
+                  onChange={(e) => handleSeoChange("robotsRules", e.target.value)}
+                  value={seo.robotsRules}
                   variant="outlined"
                   size="small"
                 />
