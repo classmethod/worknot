@@ -609,12 +609,28 @@ ${
     return headers;
   }
 
+  // Notion sets notion_check_cookie_consent (whether the visitor must consent
+  // to tracking) for its notion.site domain, which browsers reject here.
+  // Without it the client assumes consent and loads marketing trackers.
+  function rescopeConsentCookie(response) {
+    const cookies = response.headers.getSetCookie();
+    if (!cookies.some((cookie) => cookie.startsWith('notion_check_cookie_consent='))) return response;
+    const rescoped = new Response(response.body, response);
+    rescoped.headers.delete('Set-Cookie');
+    for (const cookie of cookies) {
+      rescoped.headers.append('Set-Cookie', cookie.startsWith('notion_check_cookie_consent=')
+        ? cookie.replace(/;\\s*Domain=[^;]*/i, '')
+        : cookie);
+    }
+    return rescoped;
+  }
+
   async function fetchAndApply(request) {
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
     }
     try {
-      return await handleRequest(request);
+      return rescopeConsentCookie(await handleRequest(request));
     } catch (error) {
       return new Response(
         \`<!DOCTYPE html><html><head><title>Service Unavailable</title></head>
