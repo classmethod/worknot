@@ -64,6 +64,7 @@ export interface CachingOptions {
 
 export interface CustomHtmlOptions {
   headerHtml?: string;
+  headHtml?: string;
 }
 
 export interface Custom404Options {
@@ -266,6 +267,12 @@ ${slugs
    * Add custom HTML to the top of the page body (e.g., navigation, announcements)
    */
   const CUSTOM_HEADER = ${tpl(customHtml?.headerHtml)};
+
+  /*
+   * Step 3.6.1: custom <head> HTML injection (optional)
+   * Add HTML at the start of <head> (e.g., site verification meta tags, consent scripts)
+   */
+  const CUSTOM_HEAD = ${tpl(customHtml?.headHtml)};
 
   /*
    * Step 3.7: custom 404 page configuration (optional)
@@ -908,6 +915,10 @@ ${
       this.metadata = PAGE_METADATA[slug] || {};
     }
     element(element) {
+      // Add custom <head> HTML first so it runs before Notion's scripts (Issue #147)
+      if (CUSTOM_HEAD !== '') {
+        element.prepend(CUSTOM_HEAD, { html: true });
+      }
       // Add canonical URL and robots meta tag for SEO (Issue #8 & #9)
       const canonicalUrl = 'https://' + MY_DOMAIN + (this.slug ? '/' + this.slug : '');
       element.append(\`<link rel="canonical" href="\${escapeHtml(canonicalUrl)}">\`, { html: true });

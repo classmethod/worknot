@@ -193,6 +193,7 @@ export default function App() {
   });
   const [customHtml, setCustomHtml] = useState<CustomHtmlOptions>({
     headerHtml: "",
+    headHtml: "",
   });
   const [custom404, setCustom404] = useState<Custom404Options>({
     notionUrl: "",
@@ -1303,6 +1304,21 @@ export default function App() {
                     handleCustomHtmlChange("headerHtml", e.target.value)
                   }
                   value={customHtml.headerHtml}
+                  variant="outlined"
+                  size="small"
+                />
+                <TextField
+                  fullWidth
+                  label="Head HTML"
+                  margin="dense"
+                  multiline
+                  minRows={2}
+                  placeholder={`<meta name="google-site-verification" content="..." />`}
+                  helperText="HTML injected at the start of <head> (e.g., site verification meta tags, consent scripts)"
+                  onChange={(e) =>
+                    handleCustomHtmlChange("headHtml", e.target.value)
+                  }
+                  value={customHtml.headHtml}
                   variant="outlined"
                   size="small"
                 />
