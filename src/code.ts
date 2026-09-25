@@ -151,6 +151,15 @@ function tpl(value: string | undefined): string {
   return "`" + escaped + "`";
 }
 
+// Short content hash, used to version the worker's edge cache.
+function hash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
 export default function code(data: CodeData): string {
   const {
     myDomain,
@@ -180,7 +189,7 @@ export default function code(data: CodeData): string {
   let url = myDomain.replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
 
-  return `  /* CONFIGURATION STARTS HERE */
+  const script = `  /* CONFIGURATION STARTS HERE */
 
   /* Step 1: enter your domain name like something.example.com */
   const MY_DOMAIN = ${str(url)};
@@ -361,6 +370,9 @@ ${
 
   /* CONFIGURATION ENDS HERE */
 
+  // Changes whenever this script changes, so cached rewrites never outlive it
+  const CACHE_VERSION = '__CACHE_VERSION__';
+
   const PAGE_TO_SLUG = {};
   const slugs = [];
   const pages = [];
@@ -372,8 +384,8 @@ ${
   });
 
   export default {
-    async fetch(request) {
-      return fetchAndApply(request);
+    async fetch(request, env, ctx) {
+      return fetchAndApply(request, ctx);
     }
   };
 
@@ -423,6 +435,32 @@ ${
     const prefix = rule.from.slice(0, -1);
     if (!pathname.startsWith(prefix)) return null;
     return rule.to.endsWith('*') ? rule.to.slice(0, -1) + pathname.slice(prefix.length) : rule.to;
+  }
+
+  // Notion's JS chunks are content-hashed and the same for every visitor, so keep
+  // the rewritten copy in the edge cache instead of rewriting it on each request.
+  // Only a handful of chunks contain Notion domains; the rest pass through as is.
+  async function fetchJs(request, url, ctx) {
+    const cache = caches.default;
+    const cacheKey = new URL(request.url);
+    cacheKey.searchParams.set('worknot', CACHE_VERSION);
+    const cached = await cache.match(cacheKey.toString());
+    if (cached) return cached;
+    const upstream = await fetch(url.toString());
+    let body = await upstream.text();
+    if (body.includes('notion.site') || body.includes('www.notion.so')) body = rewriteJsBody(body);
+    const response = new Response(body, upstream);
+    response.headers.set('Content-Type', 'text/javascript');
+    response.headers.delete('Set-Cookie');
+    if (upstream.ok && isAssetCacheable(upstream)) {
+      ctx.waitUntil(cache.put(cacheKey.toString(), response.clone()));
+    }
+    return response;
+  }
+
+  function isAssetCacheable(response) {
+    const cacheControl = response.headers.get('Cache-Control') || '';
+    return cacheControl.includes('immutable') || /max-age=[1-9]/.test(cacheControl);
   }
 
   function generateSitemap() {
@@ -643,12 +681,12 @@ ${
     return rescoped;
   }
 
-  async function fetchAndApply(request) {
+  async function fetchAndApply(request, ctx) {
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
     }
     try {
-      return rescopeConsentCookie(await handleRequest(request));
+      return rescopeConsentCookie(await handleRequest(request, ctx));
     } catch (error) {
       return new Response(
         \`<!DOCTYPE html><html><head><title>Service Unavailable</title></head>
@@ -661,7 +699,7 @@ ${
     }
   }
 
-  async function handleRequest(request) {
+  async function handleRequest(request, ctx) {
     let url = new URL(request.url);
 
     // Handle subdomain redirects (Issue #15)
@@ -723,12 +761,7 @@ ${
     const isAppJs = url.pathname.startsWith('/app') && url.pathname.endsWith('js');
     const isAssetJs = url.pathname.startsWith('/_assets/') && url.pathname.endsWith('.js');
     if (isAppJs || isAssetJs) {
-      response = await fetch(url.toString());
-      let body = await response.text();
-      body = rewriteJsBody(body);
-      response = new Response(body, response);
-      response.headers.set('Content-Type', 'text/javascript');
-      return applyCacheHeaders(response, url, 'text/javascript');
+      return applyCacheHeaders(await fetchJs(request, url, ctx), url, 'text/javascript');
     } else if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
       // Rewrite request body: replace custom space domain with original Notion space domain
       let reqBody = swapSpaceDomainInJson(await request.text(), CUSTOM_SPACE_DOMAIN, NOTION_SPACE_DOMAIN);
@@ -1315,4 +1348,5 @@ ${
       .transform(res);
     return applyCacheHeaders(transformed, url, contentType);
   }`;
+  return script.replace("__CACHE_VERSION__", hash(script));
 }

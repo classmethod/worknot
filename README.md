@@ -35,6 +35,7 @@ Host your Notion Site on a custom domain with Cloudflare Workers. Maintained by 
 
 **Performance**
 - Image optimization via Cloudflare Image Resizing
+- Edge caching of rewritten Notion JS to keep Worker CPU time low
 - Configurable caching for HTML, assets, and images
 
 **Reliability**
@@ -61,6 +62,10 @@ Visit the generator at **https://worknot.classmethod.live/**
 2. Configure pretty links and advanced settings
 3. Copy the generated Worker script
 4. Deploy to Cloudflare Workers
+
+### Workers usage
+
+The Notion client loads several hundred JS chunks and API calls from your domain, so a first visit makes roughly 700 Worker requests. Repeat visits load the JS from the browser cache. The Workers Free plan (100,000 requests/day) suits small sites; use Workers Paid for sites with real traffic. Rewritten JS chunks are kept in Cloudflare's edge cache, so most requests use very little CPU time.
 
 ## Development
 
