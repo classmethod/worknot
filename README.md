@@ -70,7 +70,7 @@ The Notion client loads several hundred JS chunks and API calls from your domain
 ## Development
 
 ```bash
-nvm use 20
+nvm use 24
 npm install
 npm start      # Development server
 npm run build  # Production build
