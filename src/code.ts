@@ -557,6 +557,39 @@ ${
       .replace(/"notion\\.site"/g, '"' + PARENT_DOMAIN + '"');
   }
 
+  // API bodies carry page content, so only rewrite links to this site:
+  // its notion.site domain and notion.so links to page IDs (internal page links).
+  function rewriteApiBody(body) {
+    return body
+      .replaceAll(NOTION_SITE_DOMAIN, MY_DOMAIN)
+      .replace(/https?:\\/\\/www\\.notion\\.so\\/(?=(?:[\\w-]+\\/)?[\\w%-]*[0-9a-f]{32})/g, 'https://' + MY_DOMAIN + '/');
+  }
+
+  // Swap the space domain only in the fields that hold it, never in page content.
+  const SPACE_DOMAIN_KEYS = ['spaceDomain', 'domain', 'domain_name'];
+  function swapSpaceDomain(value, from, to, key) {
+    if (Array.isArray(value)) {
+      return value.map((item) => swapSpaceDomain(item, from, to, key));
+    }
+    if (value && typeof value === 'object') {
+      for (const k of Object.keys(value)) {
+        const fieldKey = key === 'publicDomains' && k === 'name' ? 'domain' : k;
+        value[k] = swapSpaceDomain(value[k], from, to, fieldKey);
+      }
+      return value;
+    }
+    return value === from && SPACE_DOMAIN_KEYS.includes(key) ? to : value;
+  }
+
+  function swapSpaceDomainInJson(body, from, to) {
+    if (from === to || !body.includes('"' + from + '"')) return body;
+    try {
+      return JSON.stringify(swapSpaceDomain(JSON.parse(body), from, to, ''));
+    } catch (e) {
+      return body;
+    }
+  }
+
   const PAGE_FETCH_HEADERS = {
     'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -659,8 +692,7 @@ ${
       return applyCacheHeaders(response, url, 'text/javascript');
     } else if (url.pathname.startsWith('/api/v3/getPublicPageData')) {
       // Rewrite request body: replace custom space domain with original Notion space domain
-      let reqBody = await request.text();
-      reqBody = reqBody.replace(new RegExp(CUSTOM_SPACE_DOMAIN, 'g'), NOTION_SPACE_DOMAIN);
+      let reqBody = swapSpaceDomainInJson(await request.text(), CUSTOM_SPACE_DOMAIN, NOTION_SPACE_DOMAIN);
       // Inject correct blockId if absent. The client omits blockId whenever the
       // browser URL doesn't contain a 32-hex page ID (root "/" and pretty slugs
       // like "/about"). Without this, all slug pages render the root page (#90).
@@ -696,7 +728,7 @@ ${
       });
       let body = await response.text();
       // Rewrite domain info to prevent redirect
-      body = rewriteDomainInBody(body);
+      body = rewriteApiBody(body);
       // Also rewrite specific fields that cause redirects or interstitial pages
       try {
         const json = JSON.parse(body);
@@ -716,17 +748,16 @@ ${
       return response;
     } else if (url.pathname.startsWith('/api')) {
       // Rewrite request body: replace custom space domain with original Notion space domain
-      let reqBody = await request.text();
-      reqBody = reqBody.replace(new RegExp(CUSTOM_SPACE_DOMAIN, 'g'), NOTION_SPACE_DOMAIN);
+      const reqBody = swapSpaceDomainInJson(await request.text(), CUSTOM_SPACE_DOMAIN, NOTION_SPACE_DOMAIN);
       response = await fetch(url.toString(), {
         body: reqBody,
         headers: buildApiHeaders(request),
         method: 'POST',
       });
       let body = await response.text();
-      body = rewriteDomainInBody(body);
+      body = rewriteApiBody(body);
       // Rewrite Notion space domain back to custom domain in response
-      body = body.replace(new RegExp(NOTION_SPACE_DOMAIN, 'g'), CUSTOM_SPACE_DOMAIN);
+      body = swapSpaceDomainInJson(body, NOTION_SPACE_DOMAIN, CUSTOM_SPACE_DOMAIN);
       response = new Response(body, response);
       response.headers.set('Access-Control-Allow-Origin', '*');
       response.headers.delete('Content-Security-Policy');
