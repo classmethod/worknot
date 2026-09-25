@@ -46,13 +46,17 @@ echo "App JS: $app_js_filename"
 asset_js_count=$(count_matches '/_assets/.*\.js' "$TEMP_DIR/page.html")
 echo "Asset JS files: $asset_js_count"
 
-# 4. Fetch app JS
-if [ -n "$app_js_path" ]; then
-  echo "Fetching app JS..."
-  curl -s "${NOTION_URL}${app_js_path}" -o "$TEMP_DIR/app.js"
+# 4. Fetch all initial JS chunks (CONFIG and domain logic are split across chunks)
+touch "$TEMP_DIR/app.js"
+js_paths=$(grep -oE 'src="/[^"]*\.js"' "$TEMP_DIR/page.html" | sed 's/src="//;s/"//' | sort -u)
+if [ -n "$js_paths" ]; then
+  echo "Fetching JS chunks..."
+  for js_path in $js_paths; do
+    curl -sf "${NOTION_URL}${js_path}" >> "$TEMP_DIR/app.js"
+    echo >> "$TEMP_DIR/app.js"
+  done
 else
-  echo "ERROR: Could not find app JS path"
-  touch "$TEMP_DIR/app.js"
+  echo "ERROR: Could not find any JS chunks"
 fi
 
 # 5. Extract patterns from JS
@@ -76,12 +80,12 @@ echo "requireInterstitial: $ri_count"
 echo "endsWith checks: $endswith_check"
 echo "Config pattern: $config_pattern"
 
-# 6. Call getPublicPageData API to check response structure
-echo "Checking getPublicPageData API..."
-api_response=$(curl -s -X POST "${NOTION_URL}/api/v3/getPublicPageData" \
+# 6. Call getPublicPageDataForDomain API (used by the client for domain-only lookups)
+echo "Checking getPublicPageDataForDomain API..."
+api_response=$(curl -s -X POST "${NOTION_URL}/api/v3/getPublicPageDataForDomain" \
   -H "Content-Type: application/json;charset=UTF-8" \
   -A "$USER_AGENT" \
-  -d '{"type":"block-space","spaceDomain":"succinct-scar-f20"}' || echo "{}")
+  -d '{"type":"block-space","name":"page","slug":"","spaceDomain":"succinct-scar-f20","requestedOnPublicDomain":true}' || echo "{}")
 api_fields=$(echo "$api_response" | jq -r 'keys[]' 2>/dev/null | sort | tr '\n' ',' || echo "ERROR")
 echo "API fields: $api_fields"
 

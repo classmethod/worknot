@@ -549,6 +549,19 @@ ${
     'accept-language': 'en-US,en;q=0.9'
   };
 
+  // Forward Notion routing headers (e.g. x-notion-cell for fanout requests).
+  // Without them Notion keeps answering with fanoutData and pages render as 404.
+  function buildApiHeaders(request) {
+    const headers = {
+      'content-type': 'application/json;charset=UTF-8',
+      'user-agent': PAGE_FETCH_HEADERS['user-agent']
+    };
+    for (const [key, value] of request.headers) {
+      if (key.startsWith('x-notion-') || key.startsWith('notion-')) headers[key] = value;
+    }
+    return headers;
+  }
+
   async function fetchAndApply(request) {
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
@@ -664,10 +677,7 @@ ${
       // Proxy getPublicPageData and rewrite domain info
       response = await fetch(url.toString(), {
         body: reqBody,
-        headers: {
-          'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
-        },
+        headers: buildApiHeaders(request),
         method: 'POST',
       });
       let body = await response.text();
@@ -696,10 +706,7 @@ ${
       reqBody = reqBody.replace(new RegExp(CUSTOM_SPACE_DOMAIN, 'g'), NOTION_SPACE_DOMAIN);
       response = await fetch(url.toString(), {
         body: reqBody,
-        headers: {
-          'content-type': 'application/json;charset=UTF-8',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
-        },
+        headers: buildApiHeaders(request),
         method: 'POST',
       });
       let body = await response.text();
@@ -1008,7 +1015,7 @@ ${
       }
       element.append(\`<div style="display:none">Powered by <a href="http://worknot.classmethod.cf">Worknot</a></div>
       <script>
-      window.CONFIG.domainBaseUrl = 'https://\${MY_DOMAIN}';
+      if (window.CONFIG) window.CONFIG.domainBaseUrl = 'https://\${MY_DOMAIN}';
       const SLUG_TO_PAGE = \${JSON.stringify(this.SLUG_TO_PAGE)};
       const PAGE_TO_SLUG = {};
       const slugs = [];
@@ -1037,12 +1044,12 @@ ${
       function onDark() {
         el.innerHTML = '<div title="Change to Light Mode" style="margin-left: auto; margin-right: 14px; min-width: 0px;"><div role="button" tabindex="0" style="user-select: none; transition: background 120ms ease-in 0s; cursor: pointer; border-radius: 44px;"><div style="display: flex; flex-shrink: 0; height: 14px; width: 26px; border-radius: 44px; padding: 2px; box-sizing: content-box; background: rgb(46, 170, 220); transition: background 200ms ease 0s, box-shadow 200ms ease 0s;"><div style="width: 14px; height: 14px; border-radius: 44px; background: white; transition: transform 200ms ease-out 0s, background 200ms ease-out 0s; transform: translateX(12px) translateY(0px);"></div></div></div></div>';
         document.body.classList.add('dark');
-        __console.environment.ThemeStore.setState({ mode: 'dark' });
+        window.__console?.environment?.ThemeStore?.setState({ mode: 'dark' });
       };
       function onLight() {
         el.innerHTML = '<div title="Change to Dark Mode" style="margin-left: auto; margin-right: 14px; min-width: 0px;"><div role="button" tabindex="0" style="user-select: none; transition: background 120ms ease-in 0s; cursor: pointer; border-radius: 44px;"><div style="display: flex; flex-shrink: 0; height: 14px; width: 26px; border-radius: 44px; padding: 2px; box-sizing: content-box; background: rgba(135, 131, 120, 0.3); transition: background 200ms ease 0s, box-shadow 200ms ease 0s;"><div style="width: 14px; height: 14px; border-radius: 44px; background: white; transition: transform 200ms ease-out 0s, background 200ms ease-out 0s; transform: translateX(0px) translateY(0px);"></div></div></div></div>';
         document.body.classList.remove('dark');
-        __console.environment.ThemeStore.setState({ mode: 'light' });
+        window.__console?.environment?.ThemeStore?.setState({ mode: 'light' });
       }
       function toggle() {
         if (document.body.classList.contains('dark')) {
@@ -1066,7 +1073,8 @@ ${
           || mobileNav && mobileNav.firstChild) {
           redirected = true;
           updateSlug();
-          addDarkModeButton(nav ? 'web' : 'mobile');
+          // Notion only exposes ThemeStore via __console in debug sessions
+          if (window.__console?.environment?.ThemeStore) addDarkModeButton(nav ? 'web' : 'mobile');
           const onpopstate = window.onpopstate;
           window.onpopstate = function() {
             if (slugs.includes(getSlug())) {
@@ -1075,7 +1083,7 @@ ${
                 history.replaceState(history.state, 'bypass', '/' + page);
               }
             }
-            onpopstate.apply(this, [].slice.call(arguments));
+            if (onpopstate) onpopstate.apply(this, [].slice.call(arguments));
             updateSlug();
           };
         }
@@ -1096,7 +1104,7 @@ ${
                 history.replaceState(history.state, 'bypass', '/' + page);
               }
             }
-            onpopstate.apply(this, [].slice.call(arguments));
+            if (onpopstate) onpopstate.apply(this, [].slice.call(arguments));
             updateSlug();
           };
         }
