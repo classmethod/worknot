@@ -5,6 +5,7 @@
 //
 // Usage: npm run check:render            (RUNS=3 to retry flaky Notion responses more)
 // Requires Chromium for Playwright: npx playwright install chromium
+// Exit codes: 0 = pass, 1 = rendering regression, 2 = the check could not run
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -263,13 +264,14 @@ const skipped = (attempts) => attempts.every((e) => e?.startsWith("skip:"));
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "worknot-render-"));
 let wrangler;
 let browser;
-let failed = false;
+let exitCode = 2;
 try {
   await generateWorker(dir);
   wrangler = await startWrangler(dir);
   browser = await chromium.launch({ args: ["--disable-blink-features=AutomationControlled"] });
   const worker = await runChecks(browser, TARGETS.worker);
   const notion = await runChecks(browser, TARGETS.notion);
+  let failed = false;
   for (const name of Object.keys(CHECKS)) {
     let status = "PASS";
     if (skipped(worker[name])) status = "SKIP";
@@ -279,9 +281,12 @@ try {
     console.log(`${status.padEnd(6)} ${name}${detail}`);
   }
   console.log("\nFAIL = broken through Worknot only. NOTION = also broken on notion.site.");
+  exitCode = failed ? 1 : 0;
+} catch (error) {
+  console.error(`Render check could not run: ${error.message}`);
 } finally {
   await browser?.close();
   wrangler?.kill();
   fs.rmSync(dir, { recursive: true, force: true });
 }
-process.exit(failed ? 1 : 0);
+process.exit(exitCode);
