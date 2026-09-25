@@ -1195,11 +1195,18 @@ ${
 
   // Notion answers 200 with its app shell for any path, so decide here whether a
   // page navigation points at a real page: the root, a slug, or a page ID.
-  function isUnknownPageNavigation(request, pathname) {
+  function isPageNavigation(request) {
     if (request.method !== 'GET' && request.method !== 'HEAD') return false;
     const dest = request.headers.get('Sec-Fetch-Dest');
-    const isNavigation = dest ? dest === 'document' : (request.headers.get('Accept') || '').includes('text/html');
-    if (!isNavigation || /[0-9a-f]{32}/.test(pathname) || /\\.[a-z0-9]+$/i.test(pathname)) return false;
+    return dest ? dest === 'document' : (request.headers.get('Accept') || '').includes('text/html');
+  }
+
+  // Paths opened directly in the browser that are not pages (images, files)
+  const NON_PAGE_PATH = /^\\/(image|images|f|signed|api|_assets)\\//;
+
+  function isUnknownPageNavigation(request, pathname) {
+    if (!isPageNavigation(request) || NON_PAGE_PATH.test(pathname)) return false;
+    if (/[0-9a-f]{32}/.test(pathname) || /\\.[a-z0-9]+$/i.test(pathname)) return false;
     let path = pathname.slice(1);
     try {
       path = decodeURIComponent(path);
