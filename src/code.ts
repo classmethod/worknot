@@ -99,7 +99,12 @@ export interface OgImageGenerationOptions {
   backgroundColor?: string;
   textColor?: string;
   fontSize?: number;
+  fontUrl?: string;
 }
+
+// Covers Latin and Japanese; pinned so the rendered images stay stable
+export const DEFAULT_OG_FONT_URL =
+  "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@Sans2.004/Sans/SubsetOTF/JP/NotoSansJP-Bold.otf";
 
 export interface CodeData {
   myDomain: string;
@@ -129,11 +134,24 @@ export interface CodeData {
 
 function getId(url: string): string {
   try {
-    const id = new URL(url).pathname.slice(-32);
+    const link = new URL(url);
+    // A database item opened as a peek carries its own page ID in ?p=
+    const peek = link.searchParams.get("p");
+    if (peek && /^[0-9a-f]{32}$/.test(peek)) return peek;
+    const id = link.pathname.replace(/\/+$/, "").slice(-32);
     if (id.match(/[0-9a-f]{32}/)) return id;
     return "";
   } catch {
     return "";
+  }
+}
+
+// Percent-encode a path the way it arrives in request.url (e.g. non-ASCII).
+function encodePath(path: string): string {
+  try {
+    return new URL(path, "https://example.com").pathname;
+  } catch {
+    return path;
   }
 }
 
@@ -186,7 +204,7 @@ export default function code(data: CodeData): string {
     i18n,
     ogImageGeneration,
   } = data;
-  let url = myDomain.replace("https://", "").replace("http://", "");
+  let url = myDomain.trim().toLowerCase().replace("https://", "").replace("http://", "");
   if (url.slice(-1) === "/") url = url.slice(0, url.length - 1);
 
   const script = `  /* CONFIGURATION STARTS HERE */
@@ -259,8 +277,8 @@ ${slugs
    * Step 3.5: analytics configuration (optional)
    * Add your Google Analytics 4 Measurement ID and/or Facebook Pixel ID for built-in tracking
    */
-  const GOOGLE_TAG_ID = ${str(analytics?.googleTagId)};
-  const FACEBOOK_PIXEL_ID = ${str(analytics?.facebookPixelId)};
+  const GOOGLE_TAG_ID = ${str(analytics?.googleTagId?.trim().toUpperCase())};
+  const FACEBOOK_PIXEL_ID = ${str(analytics?.facebookPixelId?.trim())};
 
   /*
    * Step 3.5.1: caching configuration (optional)
@@ -297,7 +315,10 @@ ${slugs
 ${
   subdomainRedirects
     ?.filter((r) => r.subdomain && r.redirectUrl)
-    .map((r) => `    ${str(r.subdomain)}: ${str(r.redirectUrl)},\n`)
+    .map(
+      (r) =>
+        `    ${str(r.subdomain.trim().toLowerCase())}: ${str(r.redirectUrl.trim().replace(/\/+$/, ""))},\n`,
+    )
     .join("") || ""
 }  };
 
@@ -312,7 +333,7 @@ ${
     ?.filter((r) => r.from && r.to)
     .map(
       (r) =>
-        `    { from: ${str(r.from)}, to: ${str(r.to)}, permanent: ${!!r.permanent} },\n`,
+        `    { from: ${str(encodePath(r.from.trim()))}, to: ${str(r.to.trim())}, permanent: ${!!r.permanent} },\n`,
     )
     .join("") || ""
 }  ];
@@ -336,14 +357,17 @@ ${
   /*
    * Step 3.11: Dynamic OG Image Generation (optional)
    * Auto-generate Open Graph images from page titles
+   * Add an Images binding named IMAGES to this Worker to serve PNG images,
+   * which X, Facebook and LinkedIn require. Without it, SVG is served.
    */
   const OG_IMAGE_GENERATION_ENABLED = ${ogImageGeneration?.enabled || false};
   const OG_IMAGE_BG_COLOR = ${str(ogImageGeneration?.backgroundColor || "#1a1a2e")};
   const OG_IMAGE_TEXT_COLOR = ${str(ogImageGeneration?.textColor || "#ffffff")};
   const OG_IMAGE_FONT_SIZE = ${ogImageGeneration?.fontSize || 64};
+  const OG_IMAGE_FONT_URL = ${str(ogImageGeneration?.fontUrl?.trim() || DEFAULT_OG_FONT_URL)};
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
-  const GOOGLE_FONT = ${str(googleFont)};
+  const GOOGLE_FONT = ${str(googleFont.trim())};
 
   /* Step 5: enter any custom scripts and styles you'd like */
   const CUSTOM_SCRIPT = ${tpl(customScript)};
@@ -383,13 +407,31 @@ ${
     PAGE_TO_SLUG[page] = slug;
   });
 
+  // Map a request path to its slug, or null. Non-ASCII slugs arrive percent-encoded.
+  function pathToSlug(pathname) {
+    const path = pathname.slice(1);
+    try {
+      const decoded = decodeURIComponent(path);
+      if (Object.hasOwn(SLUG_TO_PAGE, decoded)) return decoded;
+    } catch (e) {}
+    return Object.hasOwn(SLUG_TO_PAGE, path) ? path : null;
+  }
+
   export default {
     async fetch(request, env, ctx) {
-      return fetchAndApply(request, ctx);
+      return fetchAndApply(request, env, ctx);
     }
   };
 
-  function rewriteImageOptions() {
+  // Workers don't negotiate format 'auto' themselves, so pick it from the Accept header
+  function negotiateImageFormat(request) {
+    const accept = request.headers.get('Accept') || '';
+    if (accept.includes('image/avif')) return 'avif';
+    if (accept.includes('image/webp')) return 'webp';
+    return '';
+  }
+
+  function rewriteImageOptions(request) {
     let options = {cf:{}};
     if (IMAGE_OPTIMIZATION === 'resize') {
       // Build image options, excluding undefined values
@@ -397,7 +439,8 @@ ${
       if (IMAGE_RESIZE_OPTIONS.width !== undefined) imageOpts.width = IMAGE_RESIZE_OPTIONS.width;
       if (IMAGE_RESIZE_OPTIONS.height !== undefined) imageOpts.height = IMAGE_RESIZE_OPTIONS.height;
       if (IMAGE_RESIZE_OPTIONS.quality !== undefined) imageOpts.quality = IMAGE_RESIZE_OPTIONS.quality;
-      if (IMAGE_RESIZE_OPTIONS.format && IMAGE_RESIZE_OPTIONS.format !== '') imageOpts.format = IMAGE_RESIZE_OPTIONS.format;
+      const format = IMAGE_RESIZE_OPTIONS.format === 'auto' ? negotiateImageFormat(request) : IMAGE_RESIZE_OPTIONS.format;
+      if (format) imageOpts.format = format;
       if (IMAGE_RESIZE_OPTIONS.fit && IMAGE_RESIZE_OPTIONS.fit !== '') imageOpts.fit = IMAGE_RESIZE_OPTIONS.fit;
       if (IMAGE_RESIZE_OPTIONS.blur !== undefined) imageOpts.blur = IMAGE_RESIZE_OPTIONS.blur;
       if (IMAGE_RESIZE_OPTIONS.anim !== undefined) imageOpts.anim = IMAGE_RESIZE_OPTIONS.anim;
@@ -468,7 +511,7 @@ ${
     slugs.forEach(
       (slug) =>
         (sitemap +=
-          '<url><loc>https://' + MY_DOMAIN + '/' + slug + '</loc></url>')
+          '<url><loc>' + escapeXml('https://' + MY_DOMAIN + '/' + encodeURI(slug)) + '</loc></url>')
     );
     sitemap += '</urlset>';
     return sitemap;
@@ -492,7 +535,7 @@ ${
       const metadata = PAGE_METADATA[slug] || {};
       const itemTitle = metadata.title || PAGE_TITLE || slug || 'Home';
       const itemDescription = metadata.description || PAGE_DESCRIPTION || '';
-      const itemUrl = 'https://' + MY_DOMAIN + (slug ? '/' + slug : '');
+      const itemUrl = escapeXml('https://' + MY_DOMAIN + (slug ? '/' + encodeURI(slug) : ''));
       rss += '<item>';
       rss += \`<title>\${escapeXml(itemTitle)}</title>\`;
       rss += \`<link>\${itemUrl}</link>\`;
@@ -525,24 +568,148 @@ ${
       .replace(/'/g, '&#039;');
   }
 
+  // The Images binding only takes #RRGGBB or #RRGGBBAA, so expand #RGB and #RGBA
   function sanitizeColor(color) {
-    return /^#[0-9a-fA-F]{3,8}$/.test(color) ? color : '#000000';
+    if (/^#[0-9a-fA-F]{3,4}$/.test(color)) return '#' + color.slice(1).replace(/./g, '$&$&');
+    return /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(color) ? color : '#000000';
   }
 
-  function generateOgImage(slug) {
+  // Estimate how wide text renders; CJK and emoji take about a full em
+  function textWidth(text, size) {
+    return Array.from(text).reduce((width, char) => width + (/[\\u2e80-\\uffff]/.test(char) ? 1 : 0.65) * size, 0);
+  }
+
+  // Break text into lines that fit the OG image, ending with an ellipsis if cut
+  function wrapText(text, size, maxLines) {
+    const maxWidth = 1040;
+    const lines = [];
+    let line = '';
+    for (const char of Array.from(text.trim())) {
+      if (line && textWidth(line + char, size) > maxWidth) {
+        const space = line.lastIndexOf(' ');
+        const cut = space > 0 && char !== ' ' ? space : line.length;
+        lines.push(line.slice(0, cut).trim());
+        line = line.slice(cut).trimStart();
+      }
+      line += char;
+    }
+    lines.push(line.trim());
+    const kept = lines.filter(Boolean);
+    if (kept.length > maxLines) {
+      const last = Array.from(kept[maxLines - 1]);
+      while (last.length && textWidth(last.join('') + '\\u2026', size) > maxWidth) last.pop();
+      kept.length = maxLines;
+      kept[maxLines - 1] = last.join('') + '\\u2026';
+    }
+    return kept;
+  }
+
+  function crc32(bytes) {
+    let crc = -1;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+    return (crc ^ -1) >>> 0;
+  }
+
+  function pngChunk(type, data) {
+    const chunk = new Uint8Array(12 + data.length);
+    const view = new DataView(chunk.buffer);
+    view.setUint32(0, data.length);
+    chunk.set(new TextEncoder().encode(type), 4);
+    chunk.set(data, 8);
+    view.setUint32(8 + data.length, crc32(chunk.subarray(4, 8 + data.length)));
+    return chunk;
+  }
+
+  // One-color canvas (1-bit palette PNG) for the Images binding to draw text on
+  async function solidPng(width, height, color) {
+    const palette = new Uint8Array([1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)));
+    const header = new Uint8Array(13);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, width);
+    view.setUint32(4, height);
+    header.set([1, 3, 0, 0, 0], 8);
+    // Each row is a filter byte followed by zero bits, i.e. palette entry 0
+    const pixels = new Uint8Array(height * (1 + Math.ceil(width / 8)));
+    const compressed = await new Response(new Blob([pixels]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer();
+    return new Blob([
+      new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      pngChunk('IHDR', header),
+      pngChunk('PLTE', palette),
+      pngChunk('IDAT', new Uint8Array(compressed)),
+      pngChunk('IEND', new Uint8Array(0)),
+    ]);
+  }
+
+  // The default font has no emoji glyphs, so drop them instead of drawing boxes
+  const EMOJI = /\\p{Emoji_Presentation}|[\\u200d\\ufe0f\\u20e3]|[\\u{1F1E6}-\\u{1F1FF}]/gu;
+  const stripEmoji = (text) => text.replace(EMOJI, '').replace(/\\s+/g, ' ');
+
+  // X, Facebook and LinkedIn ignore SVG, so draw a PNG with the Images binding
+  async function renderOgPng(env, title, siteName, bgColor, textColor, fontSize) {
+    const font = { url: OG_IMAGE_FONT_URL };
+    const lineHeight = Math.round(fontSize * 1.3);
+    // Shrinks a line only if the width estimate was too low
+    const fit = { width: 1040, fit: 'scale-down' };
+    const text = (content, size) => env.IMAGES.text(content, { font, color: textColor, size }).transform(fit);
+    const maxLines = Math.max(1, Math.min(3, Math.floor(440 / lineHeight)));
+    const lines = wrapText(stripEmoji(title), fontSize, maxLines);
+    let top = Math.max(40, Math.round(290 - (lines.length * lineHeight) / 2));
+    const canvas = await solidPng(1200, 630, bgColor);
+    let image = env.IMAGES.input(canvas.stream());
+    for (const line of lines) {
+      image = image.draw(text(line, fontSize), { top, left: 80 });
+      top += lineHeight;
+    }
+    const siteLine = wrapText(stripEmoji(siteName), 32, 1)[0];
+    if (siteLine) {
+      image = image.draw(text(siteLine, 32), { bottom: 60, left: 80, opacity: 0.7 });
+    }
+    return (await image.output({ format: 'image/png' })).response({
+      headers: { 'Cache-Control': 'public, max-age=604800' },
+    });
+  }
+
+  async function generateOgImage(slug, env, ctx, request) {
+    // Only pages this site links to; anything else would render and cache a new image
+    if (!Object.hasOwn(SLUG_TO_PAGE, slug) && slug !== '404') {
+      return new Response('Not found', { status: 404 });
+    }
     const metadata = PAGE_METADATA[slug] || {};
     const title = metadata.title || PAGE_TITLE || MY_DOMAIN;
     const siteName = SITE_NAME || MY_DOMAIN;
-    const escapedTitle = escapeHtml(title);
-    const escapedSiteName = escapeHtml(siteName);
     const bgColor = sanitizeColor(OG_IMAGE_BG_COLOR);
     const textColor = sanitizeColor(OG_IMAGE_TEXT_COLOR);
     const fontSize = Math.max(12, Math.min(200, parseInt(OG_IMAGE_FONT_SIZE) || 64));
+    let maxAge = 604800;
+
+    if (env.IMAGES && OG_IMAGE_FONT_URL) {
+      const cache = caches.default;
+      const cacheKey = new URL('/og-image/' + encodeURIComponent(slug) + '?worknot=' + CACHE_VERSION, request.url).toString();
+      try {
+        const cached = await cache.match(cacheKey);
+        if (cached) return cached;
+        const png = await renderOgPng(env, title, siteName, bgColor, textColor, fontSize);
+        ctx.waitUntil(cache.put(cacheKey, png.clone()));
+        return png;
+      } catch (error) {
+        console.error(JSON.stringify({ message: 'OG image PNG rendering failed, serving SVG', error: String(error) }));
+        // Retry the PNG soon instead of pinning the fallback for a week
+        maxAge = 300;
+      }
+    }
+
+    // Truncate before escaping so an entity like &amp; is never cut in half
+    const chars = Array.from(title);
+    const escapedTitle = escapeHtml(chars.length > 40 ? chars.slice(0, 40).join('') + '...' : title);
+    const escapedSiteName = escapeHtml(siteName);
 
     const svg = \`<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
       <rect width="100%" height="100%" fill="\${bgColor}"/>
       <text x="100" y="280" font-size="\${fontSize}" fill="\${textColor}" font-family="system-ui, -apple-system, sans-serif" font-weight="bold">
-        \${escapedTitle.length > 40 ? escapedTitle.substring(0, 40) + '...' : escapedTitle}
+        \${escapedTitle}
       </text>
       <text x="100" y="550" font-size="32" fill="\${textColor}" font-family="system-ui, -apple-system, sans-serif" opacity="0.7">
         \${escapedSiteName}
@@ -552,7 +719,7 @@ ${
     return new Response(svg, {
       headers: {
         'Content-Type': 'image/svg+xml',
-        'Cache-Control': 'public, max-age=604800',
+        'Cache-Control': 'public, max-age=' + maxAge,
       },
     });
   }
@@ -681,13 +848,14 @@ ${
     return rescoped;
   }
 
-  async function fetchAndApply(request, ctx) {
+  async function fetchAndApply(request, env, ctx) {
     if (request.method === 'OPTIONS') {
       return handleOptions(request);
     }
     try {
-      return rescopeConsentCookie(await handleRequest(request, ctx));
+      return rescopeConsentCookie(await handleRequest(request, env, ctx));
     } catch (error) {
+      console.error(JSON.stringify({ message: 'request failed', path: new URL(request.url).pathname, error: String(error) }));
       return new Response(
         \`<!DOCTYPE html><html><head><title>Service Unavailable</title></head>
         <body style="font-family:system-ui;text-align:center;padding:60px 20px">
@@ -699,7 +867,7 @@ ${
     }
   }
 
-  async function handleRequest(request, ctx) {
+  async function handleRequest(request, env, ctx) {
     let url = new URL(request.url);
 
     // Handle subdomain redirects (Issue #15)
@@ -710,7 +878,7 @@ ${
     if (hostParts.length > domainParts.length) {
       const subdomain = hostParts.slice(0, hostParts.length - domainParts.length).join('.');
       const mainDomainFromHost = hostParts.slice(hostParts.length - domainParts.length).join('.');
-      if (mainDomainFromHost === MY_DOMAIN && SUBDOMAIN_REDIRECTS[subdomain]) {
+      if (mainDomainFromHost === MY_DOMAIN && Object.hasOwn(SUBDOMAIN_REDIRECTS, subdomain)) {
         const redirectBase = SUBDOMAIN_REDIRECTS[subdomain];
         const redirectUrl = redirectBase + url.pathname + url.search;
         return Response.redirect(redirectUrl, 301);
@@ -751,8 +919,16 @@ ${
     }
     // Handle dynamic OG image generation (Issue #36)
     if (url.pathname.startsWith('/og-image/') && OG_IMAGE_GENERATION_ENABLED) {
-      const slug = url.pathname.replace('/og-image/', '');
-      return generateOgImage(slug);
+      let slug = url.pathname.replace('/og-image/', '');
+      try {
+        slug = decodeURIComponent(slug);
+      } catch (e) {}
+      return generateOgImage(slug, env, ctx, request);
+    }
+    // Pretty links have no trailing slash; keep links like /about/ working
+    const trimmedPath = url.pathname.replace(/\\/+$/, '');
+    if (trimmedPath && trimmedPath !== url.pathname && pathToSlug(trimmedPath) !== null) {
+      return Response.redirect('https://' + MY_DOMAIN + trimmedPath + url.search, 301);
     }
     if (isUnknownPageNavigation(request, url.pathname)) {
       return notFoundResponse(url);
@@ -762,6 +938,7 @@ ${
       return notFoundResponse(url, true);
     }
     let response;
+    const matchedSlug = pathToSlug(url.pathname);
     const isAppJs = url.pathname.startsWith('/app') && url.pathname.endsWith('js');
     const isAssetJs = url.pathname.startsWith('/_assets/') && url.pathname.endsWith('.js');
     if (isAppJs || isAssetJs) {
@@ -780,8 +957,8 @@ ${
           if (referer) {
             try {
               const refPath = new URL(referer).pathname;
-              const slug = decodeURIComponent(refPath.slice(1));
-              if (SLUG_TO_PAGE.hasOwnProperty(slug)) {
+              const slug = pathToSlug(refPath);
+              if (slug !== null) {
                 pageId = SLUG_TO_PAGE[slug];
               } else {
                 const match = refPath.match(/[0-9a-f]{32}/);
@@ -823,7 +1000,7 @@ ${
       response.headers.set('Access-Control-Allow-Origin', '*');
       response.headers.delete('Content-Security-Policy');
       return response;
-    } else if (url.pathname.startsWith('/api')) {
+    } else if (url.pathname.startsWith('/api/')) {
       // Rewrite request body: replace custom space domain with original Notion space domain
       const reqBody = swapSpaceDomainInJson(await request.text(), CUSTOM_SPACE_DOMAIN, NOTION_SPACE_DOMAIN);
       response = await fetch(url.toString(), {
@@ -839,11 +1016,14 @@ ${
       response.headers.set('Access-Control-Allow-Origin', '*');
       response.headers.delete('Content-Security-Policy');
       return response;
-    } else if (url.pathname.startsWith('/image') && IMAGE_OPTIMIZATION !== 'none') {
-      const response = await fetch(url, rewriteImageOptions());
+    } else if (IMAGE_OPTIMIZATION === 'resize' && /^\\/images?\\//.test(url.pathname)) {
+      let response = await fetch(url, rewriteImageOptions(request));
+      if (IMAGE_RESIZE_OPTIONS.format === 'auto') {
+        response = new Response(response.body, response);
+        response.headers.append('Vary', 'Accept');
+      }
       return applyCacheHeaders(response, url, 'image');
-    } else if (slugs.indexOf(url.pathname.slice(1)) > -1) {
-      const matchedSlug = url.pathname.slice(1);
+    } else if (matchedSlug !== null) {
       const pageId = SLUG_TO_PAGE[matchedSlug];
       url.pathname = '/' + pageId;
       response = await fetch(url.toString(), {
@@ -857,6 +1037,12 @@ ${
       response = await fetch(url.toString(), {
         headers: PAGE_FETCH_HEADERS,
       });
+      // HTMLRewriter parses any body regardless of Content-Type, so stream
+      // non-HTML responses (CSS, images, files) through untouched
+      const contentType = response.headers.get('Content-Type') || '';
+      if (!contentType.includes('text/html')) {
+        return applyCacheHeaders(response, url, contentType);
+      }
       response = new Response(response.body, response);
       response.headers.delete('Content-Security-Policy');
       response.headers.delete('X-Content-Security-Policy');
@@ -864,6 +1050,7 @@ ${
 
     // Handle 404 with custom page if configured (Issue #12)
     if (response.status === 404 && CUSTOM_404_PAGE_ID !== '') {
+      await response.body?.cancel();
       return notFoundResponse(url);
     }
 
@@ -1047,7 +1234,11 @@ ${
         // Add alternate language versions from page metadata
         const pageAlternates = this.metadata.alternates || [];
         for (const alt of pageAlternates) {
-          const href = alt.url || \`https://\${MY_DOMAIN}\${alt.slug}\`;
+          if (!alt.locale || !(alt.url || alt.slug)) continue;
+          // "Slug or URL": use a full URL as is and resolve a slug on this domain
+          const href = alt.url || (/^https?:\\/\\//.test(alt.slug)
+            ? alt.slug
+            : \`https://\${MY_DOMAIN}/\${alt.slug.replace(/^\\/+/, '')}\`);
           element.append(\`<link rel="alternate" hreflang="\${escapeHtml(alt.locale)}" href="\${escapeHtml(href)}">\`, { html: true });
         }
 
@@ -1138,7 +1329,7 @@ ${
       element.append(\`<div style="display:none">Powered by <a href="http://worknot.classmethod.cf">Worknot</a></div>
       <script>
       if (window.CONFIG) window.CONFIG.domainBaseUrl = 'https://\${MY_DOMAIN}';
-      const SLUG_TO_PAGE = \${JSON.stringify(this.SLUG_TO_PAGE)};
+      const SLUG_TO_PAGE = \${JSON.stringify(this.SLUG_TO_PAGE).replace(/</g, '\\\\u003c')};
       // Keep the requested URL when the custom 404 page is shown
       const NOT_FOUND_PATH = \${this.notFound} ? location.pathname : null;
       const PAGE_TO_SLUG = {};
@@ -1157,7 +1348,11 @@ ${
         return match ? match[0] : '';
       }
       function getSlug() {
-        return location.pathname.slice(1);
+        try {
+          return decodeURIComponent(location.pathname.slice(1));
+        } catch (e) {
+          return location.pathname.slice(1);
+        }
       }
       function updateSlug() {
         const slug = PAGE_TO_SLUG[getPage()];
@@ -1302,11 +1497,7 @@ ${
   function isUnknownPageNavigation(request, pathname) {
     if (!isPageNavigation(request) || NON_PAGE_PATH.test(pathname)) return false;
     if (/[0-9a-f]{32}/.test(pathname) || /\\.[a-z0-9]+$/i.test(pathname)) return false;
-    let path = pathname.slice(1);
-    try {
-      path = decodeURIComponent(path);
-    } catch (e) {}
-    return !SLUG_TO_PAGE.hasOwnProperty(path) && !SLUG_TO_PAGE.hasOwnProperty(pathname.slice(1));
+    return pathToSlug(pathname) === null;
   }
 
   // Any public Notion page renders when its ID is requested on this domain, so
@@ -1319,7 +1510,6 @@ ${
     if (!isPageNavigation(request) || NON_PAGE_PATH.test(pathname)) return false;
     const pageId = match[0];
     if (pageIsForeign.has(pageId)) return pageIsForeign.get(pageId);
-    let foreign = false;
     try {
       const response = await fetch('https://' + NOTION_SITE_DOMAIN + '/api/v3/getPublicPageData', {
         method: 'POST',
@@ -1332,12 +1522,19 @@ ${
           requestedOnPublicDomain: true,
         }),
       });
+      if (!response.ok) {
+        await response.body?.cancel();
+        return false;
+      }
       const data = await response.json();
-      foreign = !!data.spaceDomain && data.spaceDomain !== NOTION_SPACE_DOMAIN && data.publicDomainName !== NOTION_SPACE_DOMAIN;
-    } catch (e) {}
-    if (pageIsForeign.size > 1000) pageIsForeign.clear();
-    pageIsForeign.set(pageId, foreign);
-    return foreign;
+      const foreign = !!data.spaceDomain && data.spaceDomain !== NOTION_SPACE_DOMAIN && data.publicDomainName !== NOTION_SPACE_DOMAIN;
+      if (pageIsForeign.size > 1000) pageIsForeign.clear();
+      pageIsForeign.set(pageId, foreign);
+      return foreign;
+    } catch (e) {
+      // Serve the page this time, but don't cache a transient failure
+      return false;
+    }
   }
 
   async function notFoundResponse(url, plain) {

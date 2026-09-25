@@ -31,7 +31,7 @@
   },
   "scripts": {
     "start": "vite",
-    "build": "vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

@@ -1,6 +1,6 @@
 import {
-  useState,
   useRef,
+  useState,
   type ChangeEvent,
   type Dispatch,
   type ReactNode,
@@ -44,6 +44,7 @@ import {
   ExpandMore as ExpandMoreIcon,
 } from "@mui/icons-material";
 import code, {
+  DEFAULT_OG_FONT_URL,
   CodeData,
   ImageOptions,
   PageMetadata,
@@ -80,30 +81,147 @@ function isValidNotionUrl(url: string): boolean {
   if (!url) return true;
   try {
     const link = new URL(url);
+    const host = link.hostname;
     const isNotionHost =
-      link.hostname.endsWith("notion.so") ||
-      link.hostname.endsWith("notion.site");
-    const hasValidId = NOTION_ID_PATTERN.test(link.pathname.slice(-32));
+      host === "notion.so" ||
+      host.endsWith(".notion.so") ||
+      host.endsWith(".notion.site");
+    const hasValidId = NOTION_ID_PATTERN.test(
+      link.pathname.replace(/\/+$/, "").slice(-32),
+    );
     return isNotionHost && hasValidId;
   } catch {
     return false;
   }
 }
 
-type SlugPair = [string, string];
+const SUBDOMAIN_PATTERN = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/i;
+const REDIRECT_FROM_PATTERN = /^\/[^\s*?#]*\*?$/;
+const REDIRECT_TO_PATTERN = /^\/[^\s*]*\*?$/;
+const GOOGLE_TAG_PATTERN = /^(G|GT|AW|DC)-[A-Z0-9]+$/i;
+const PIXEL_ID_PATTERN = /^\d+$/;
+const GOOGLE_FONT_PATTERN = /^[A-Za-z0-9 ]+$/;
+const HEX_COLOR_PATTERN = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+// Paths the worker routes elsewhere before it looks up pretty links
+const RESERVED_SLUG_PATTERN =
+  /^(api|images?|og-image)\/|^_assets\/.*\.js$|^app.*js$|^(login|robots\.txt|sitemap\.xml|rss\.xml)$/;
+// Characters and dot segments that can never match a request path
+const UNREACHABLE_SLUG_PATTERN = /[?#]|(^|\/)\.\.?(\/|$)/;
 
-function updateSlugAtIndex(
-  slugs: SlugPair[],
-  index: number,
-  position: 0 | 1,
-  value: string,
-): SlugPair[] {
-  return slugs.map((slug, i) => {
-    if (i !== index) return slug;
-    const updated: SlugPair = [...slug];
-    updated[position] = value;
-    return updated;
-  });
+function isHttpUrl(value: string): boolean {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+function patternError(
+  value: string | undefined,
+  pattern: RegExp,
+  message: string,
+): string | undefined {
+  const trimmed = (value || "").trim();
+  return trimmed && !pattern.test(trimmed) ? message : undefined;
+}
+
+function normalizeSlug(slug: string): string {
+  return slug.trim().replace(/^\/+|\/+$/g, "");
+}
+
+function slugRowErrors(row: SlugRow, duplicate: boolean) {
+  if (!row.slug && !row.notionUrl) return {};
+  const slug = normalizeSlug(row.slug);
+  return {
+    slug: !slug
+      ? "Enter a pretty link"
+      : UNREACHABLE_SLUG_PATTERN.test(slug)
+        ? "Remove ?, # and . or .. path segments"
+        : RESERVED_SLUG_PATTERN.test(slug)
+          ? "This path is reserved by the worker"
+          : duplicate
+            ? "This pretty link is already used"
+            : undefined,
+    notionUrl:
+      !row.notionUrl || !isValidNotionUrl(row.notionUrl)
+        ? "Please enter a valid Notion Page URL"
+        : undefined,
+  };
+}
+
+function subdomainRedirectErrors(redirect: SubdomainRedirect, host: string) {
+  if (!redirect.subdomain && !redirect.redirectUrl) return {};
+  const subdomain = redirect.subdomain.trim().toLowerCase();
+  const redirectUrl = redirect.redirectUrl.trim();
+  return {
+    subdomain:
+      !SUBDOMAIN_PATTERN.test(subdomain) || subdomain.endsWith(host)
+        ? "Enter only the subdomain, e.g. www"
+        : undefined,
+    redirectUrl: !isHttpUrl(redirectUrl)
+      ? "Enter a full URL starting with https://"
+      : new URL(redirectUrl).hostname === `${subdomain}.${host}`
+        ? "This URL points back to the same subdomain and would loop"
+        : undefined,
+  };
+}
+
+// Mirrors matchRedirectRule in the generated worker, which compares encoded paths.
+// The worker also redirects /slug/ to /slug, so that hop is followed too.
+function redirectLoops(
+  from: string,
+  to: string,
+  host: string,
+  slugs: Set<string>,
+): boolean {
+  try {
+    const target = new URL(to.replace(/\*$/, ""), `https://${host}`);
+    if (target.hostname !== host) return false;
+    const pattern = new URL(from, `https://${host}`).pathname;
+    const matches = (path: string) =>
+      pattern.endsWith("*")
+        ? path.startsWith(pattern.slice(0, -1))
+        : path === pattern;
+    const trimmed = target.pathname.replace(/\/+$/, "");
+    return (
+      matches(target.pathname) ||
+      (trimmed !== target.pathname &&
+        slugs.has(decodeURIComponent(trimmed.slice(1))) &&
+        matches(trimmed))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function redirectRuleErrors(
+  rule: RedirectRule,
+  host: string,
+  slugs: Set<string>,
+) {
+  if (!rule.from && !rule.to) return {};
+  const fromPath = rule.from.trim();
+  const toPath = rule.to.trim();
+  const from = REDIRECT_FROM_PATTERN.test(fromPath)
+    ? undefined
+    : "Start with /, e.g. /old-page or /old/* (no ? or #)";
+  let to: string | undefined;
+  if (!REDIRECT_TO_PATTERN.test(toPath) && !isHttpUrl(toPath)) {
+    to = "Use a path starting with / or a full https:// URL";
+  } else if (toPath.endsWith("*") && !fromPath.endsWith("*")) {
+    to = "A trailing * only works when From Path also ends with *";
+  } else if (!from && redirectLoops(fromPath, toPath, host, slugs)) {
+    to = "This target matches the rule again and would loop";
+  }
+  return { from, to };
+}
+
+interface SlugRow {
+  id: number;
+  slug: string;
+  notionUrl: string;
+  metadata: PageMetadata;
+  expanded: boolean;
 }
 
 interface FeatureCardProps {
@@ -129,10 +247,10 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
       }}
     >
       <Box sx={{ color: "primary.main", mb: 1.5 }}>{icon}</Box>
-      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+      <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
         {title}
       </Typography>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {description}
       </Typography>
     </Paper>
@@ -140,7 +258,8 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
 }
 
 export default function App() {
-  const [slugs, setSlugs] = useState<SlugPair[]>([]);
+  const [slugRows, setSlugRows] = useState<SlugRow[]>([]);
+  const nextRowId = useRef(0);
   const [myDomain, setMyDomain] = useState("");
   const [notionUrl, setNotionUrl] = useState("");
   const [pageTitle, setPageTitle] = useState("");
@@ -152,9 +271,6 @@ export default function App() {
   const [optionImage, setOptionImage] = useState<ImageOptions>({});
   const [optionalImageResize, setOptionalImageResize] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [pageMetadata, setPageMetadata] = useState<
-    Record<string, PageMetadata>
-  >({});
   const [structuredData, setStructuredData] = useState<StructuredDataOptions>({
     enabled: false,
     schemaType: "WebPage",
@@ -178,9 +294,6 @@ export default function App() {
     aiAttribution: "",
     robotsRules: "",
   });
-  const [slugMetadataExpanded, setSlugMetadataExpanded] = useState<
-    Record<number, boolean>
-  >({});
   const [analytics, setAnalytics] = useState<AnalyticsOptions>({
     googleTagId: "",
     facebookPixelId: "",
@@ -218,6 +331,7 @@ export default function App() {
       backgroundColor: "#1a1a2e",
       textColor: "#ffffff",
       fontSize: 64,
+      fontUrl: DEFAULT_OG_FONT_URL,
     });
 
   function createInputHandler<T>(
@@ -238,41 +352,42 @@ export default function App() {
   const handleCustomCss = createInputHandler(setCustomCss);
 
   function addSlug(): void {
-    setSlugs([...slugs, ["", ""]]);
+    setSlugRows([
+      ...slugRows,
+      {
+        id: nextRowId.current++,
+        slug: "",
+        notionUrl: "",
+        metadata: {},
+        expanded: false,
+      },
+    ]);
     setCopied(false);
   }
 
-  function deleteSlug(index: number): void {
-    const slug = slugs[index][0];
-    setSlugs(slugs.filter((_, i) => i !== index));
-    // Clean up page metadata for the deleted slug
-    if (slug && pageMetadata[slug]) {
-      const newMetadata = { ...pageMetadata };
-      delete newMetadata[slug];
-      setPageMetadata(newMetadata);
-    }
-    // Clean up expanded state
-    const newExpanded = { ...slugMetadataExpanded };
-    delete newExpanded[index];
-    setSlugMetadataExpanded(newExpanded);
+  function deleteSlug(id: number): void {
+    setSlugRows(slugRows.filter((row) => row.id !== id));
     setCopied(false);
   }
 
-  function handleCustomURL(value: string, index: number): void {
-    const oldSlug = slugs[index][0];
-    setSlugs(updateSlugAtIndex(slugs, index, 0, value));
-    // Update page metadata key when slug changes
-    if (oldSlug !== value && pageMetadata[oldSlug]) {
-      const newMetadata = { ...pageMetadata };
-      newMetadata[value] = newMetadata[oldSlug];
-      delete newMetadata[oldSlug];
-      setPageMetadata(newMetadata);
-    }
+  // Metadata and panel state live on the row, so editing a slug never moves them
+  function updateSlugRow(
+    id: number,
+    update: (row: SlugRow) => Partial<SlugRow>,
+  ): void {
+    setSlugRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, ...update(row) } : row)),
+    );
+  }
+
+  function handleCustomURL(input: string, id: number): void {
+    // The worker matches slugs without the leading slash
+    updateSlugRow(id, () => ({ slug: input.replace(/^\/+/, "") }));
     setCopied(false);
   }
 
-  function handleNotionPageURL(value: string, index: number): void {
-    setSlugs(updateSlugAtIndex(slugs, index, 1, value));
+  function handleNotionPageURL(value: string, id: number): void {
+    updateSlugRow(id, () => ({ notionUrl: value }));
     setCopied(false);
   }
 
@@ -281,17 +396,13 @@ export default function App() {
   }
 
   function handlePageMetadata(
-    slug: string,
+    id: number,
     field: keyof PageMetadata,
     value: string,
   ): void {
-    setPageMetadata({
-      ...pageMetadata,
-      [slug]: {
-        ...pageMetadata[slug],
-        [field]: value,
-      },
-    });
+    updateSlugRow(id, (row) => ({
+      metadata: { ...row.metadata, [field]: value },
+    }));
     setCopied(false);
   }
 
@@ -326,48 +437,43 @@ export default function App() {
     ogImageGeneration,
   );
 
+  function updatePageAlternates(
+    id: number,
+    update: (alternates: PageAlternate[]) => PageAlternate[],
+  ): void {
+    updateSlugRow(id, (row) => ({
+      metadata: {
+        ...row.metadata,
+        alternates: update(row.metadata.alternates || []),
+      },
+    }));
+    setCopied(false);
+  }
+
   function handlePageAlternate(
-    slug: string,
+    id: number,
     index: number,
     field: keyof PageAlternate,
     value: string,
   ): void {
-    const currentAlternates = pageMetadata[slug]?.alternates || [];
-    const updatedAlternates = currentAlternates.map((alt, i) =>
-      i === index ? { ...alt, [field]: value } : alt,
+    updatePageAlternates(id, (alternates) =>
+      alternates.map((alt, i) =>
+        i === index ? { ...alt, [field]: value } : alt,
+      ),
     );
-    setPageMetadata({
-      ...pageMetadata,
-      [slug]: {
-        ...pageMetadata[slug],
-        alternates: updatedAlternates,
-      },
-    });
-    setCopied(false);
   }
 
-  function addPageAlternate(slug: string): void {
-    const currentAlternates = pageMetadata[slug]?.alternates || [];
-    setPageMetadata({
-      ...pageMetadata,
-      [slug]: {
-        ...pageMetadata[slug],
-        alternates: [...currentAlternates, { locale: "", slug: "" }],
-      },
-    });
-    setCopied(false);
+  function addPageAlternate(id: number): void {
+    updatePageAlternates(id, (alternates) => [
+      ...alternates,
+      { locale: "", slug: "" },
+    ]);
   }
 
-  function deletePageAlternate(slug: string, index: number): void {
-    const currentAlternates = pageMetadata[slug]?.alternates || [];
-    setPageMetadata({
-      ...pageMetadata,
-      [slug]: {
-        ...pageMetadata[slug],
-        alternates: currentAlternates.filter((_, i) => i !== index),
-      },
-    });
-    setCopied(false);
+  function deletePageAlternate(id: number, index: number): void {
+    updatePageAlternates(id, (alternates) =>
+      alternates.filter((_, i) => i !== index),
+    );
   }
 
   function addSubdomainRedirect(): void {
@@ -419,13 +525,6 @@ export default function App() {
     setCopied(false);
   }
 
-  function toggleSlugMetadata(index: number): void {
-    setSlugMetadataExpanded({
-      ...slugMetadataExpanded,
-      [index]: !slugMetadataExpanded[index],
-    });
-  }
-
   function clampValue(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
   }
@@ -434,17 +533,18 @@ export default function App() {
     target: EventTarget & (HTMLInputElement | HTMLTextAreaElement),
   ): void {
     const name = target.name as keyof ImageOptions;
-    let formValue: string | number = target.value;
+    let formValue: string | number | undefined = target.value;
 
     switch (name) {
       case "imageResizeType":
         setOptionalImageResize(target.value === "resize");
         break;
       case "imageQuality":
-        formValue = clampValue(Number(formValue), 1, 100);
+        // An empty field means "use the default", not the minimum
+        formValue = formValue === "" ? undefined : clampValue(Number(formValue), 1, 100);
         break;
       case "imageBlur":
-        formValue = clampValue(Number(formValue), 0, 250);
+        formValue = formValue === "" ? undefined : clampValue(Number(formValue), 0, 250);
         break;
     }
 
@@ -466,19 +566,95 @@ export default function App() {
   const notionUrlHelperText = !isValidNotionUrl(notionUrl)
     ? "Please enter a valid Notion Page URL"
     : undefined;
-  const noError = !myDomainHelperText && !notionUrlHelperText;
+  const domainHost = domain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
+
+  const slugCounts = new Map<string, number>();
+  for (const row of slugRows) {
+    const slug = normalizeSlug(row.slug);
+    if (slug) slugCounts.set(slug, (slugCounts.get(slug) || 0) + 1);
+  }
+  const slugErrors = slugRows.map((row) =>
+    slugRowErrors(row, (slugCounts.get(normalizeSlug(row.slug)) || 0) > 1),
+  );
+  const subdomainErrors = subdomainRedirects.map((redirect) =>
+    subdomainRedirectErrors(redirect, domainHost),
+  );
+  const redirectErrors = redirectRules.map((rule) =>
+    redirectRuleErrors(rule, domainHost, new Set(slugCounts.keys())),
+  );
+  const googleFontError = patternError(
+    googleFont,
+    GOOGLE_FONT_PATTERN,
+    "Enter a font family name, e.g. Open Sans",
+  );
+  const googleTagError = patternError(
+    analytics.googleTagId,
+    GOOGLE_TAG_PATTERN,
+    "Enter only the ID, e.g. G-XXXXXXXXXX",
+  );
+  const pixelIdError = patternError(
+    analytics.facebookPixelId,
+    PIXEL_ID_PATTERN,
+    "Enter only the numeric Pixel ID",
+  );
+  const ogColorError = (color: string | undefined) =>
+    ogImageGeneration.enabled
+      ? patternError(color, HEX_COLOR_PATTERN, "Use a hex color like #1a1a2e")
+      : undefined;
+  const ogBackgroundError = ogColorError(ogImageGeneration.backgroundColor);
+  const ogTextColorError = ogColorError(ogImageGeneration.textColor);
+  const ogFontUrlError =
+    ogImageGeneration.enabled &&
+    ogImageGeneration.fontUrl?.trim() &&
+    !isHttpUrl(ogImageGeneration.fontUrl.trim())
+      ? "Enter a full URL to a TTF, OTF, WOFF or WOFF2 file"
+      : undefined;
+  const custom404Error = isValidNotionUrl(custom404.notionUrl || "")
+    ? undefined
+    : "Please enter a valid Notion Page URL";
+
+  const hasFieldError = (errors: Record<string, string | undefined>[]) =>
+    errors.some((e) => Object.values(e).some(Boolean));
+  const advancedError =
+    hasFieldError(subdomainErrors) ||
+    hasFieldError(redirectErrors) ||
+    !!(
+      googleFontError ||
+      googleTagError ||
+      pixelIdError ||
+      custom404Error ||
+      ogBackgroundError ||
+      ogTextColorError ||
+      ogFontUrlError
+    );
+  const noError =
+    !myDomainHelperText &&
+    !notionUrlHelperText &&
+    !hasFieldError(slugErrors) &&
+    !advancedError;
 
   const codeData: CodeData = {
     myDomain: domain,
     notionUrl: url,
-    slugs,
+    slugs: slugRows.map((row) => [normalizeSlug(row.slug), row.notionUrl]),
     pageTitle,
     pageDescription,
     googleFont,
     customScript,
     customCss,
     optionImage,
-    pageMetadata,
+    pageMetadata: Object.fromEntries(
+      slugRows
+        .filter(
+          (row) =>
+            normalizeSlug(row.slug) && Object.keys(row.metadata).length > 0,
+        )
+        .map((row) => [normalizeSlug(row.slug), row.metadata]),
+    ),
     structuredData,
     branding,
     socialPreview,
@@ -495,13 +671,12 @@ export default function App() {
   };
 
   const script = noError ? code(codeData) : undefined;
-  const textarea = useRef<HTMLTextAreaElement>(null);
-
   function copyToClipboard(): void {
-    if (!noError || !textarea.current) return;
-    textarea.current.select();
-    document.execCommand("copy");
-    setCopied(true);
+    if (!script) return;
+    navigator.clipboard.writeText(script).then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
   }
 
   return (
@@ -537,8 +712,7 @@ export default function App() {
           <Stack
             direction="row"
             spacing={1}
-            justifyContent="center"
-            sx={{ mb: 3 }}
+            sx={{ justifyContent: "center", mb: 3 }}
           >
             <Chip
               label="Powered by Cloudflare Workers"
@@ -663,9 +837,8 @@ export default function App() {
           <Typography
             variant="h5"
             component="h2"
-            fontWeight={600}
             gutterBottom
-            sx={{ mb: 3 }}
+            sx={{ fontWeight: 600, mb: 3 }}
           >
             Generate Your Worker Script
           </Typography>
@@ -680,10 +853,12 @@ export default function App() {
             placeholder={DEFAULT_DOMAIN}
             value={myDomain}
             variant="outlined"
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">https://</InputAdornment>
-              ),
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">https://</InputAdornment>
+                ),
+              },
             }}
           />
           <TextField
@@ -698,9 +873,9 @@ export default function App() {
             variant="outlined"
           />
 
-          {slugs.map(([customUrl, notionPageUrl], index) => (
+          {slugRows.map((row, index) => (
             <Paper
-              key={index}
+              key={row.id}
               elevation={0}
               sx={{
                 p: 2,
@@ -711,32 +886,38 @@ export default function App() {
             >
               <TextField
                 fullWidth
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">{`${domain}/`}</InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">{`${domain}/`}</InputAdornment>
+                    ),
+                  },
                 }}
                 label="Pretty Link"
                 margin="normal"
                 placeholder="about"
-                onChange={(e) => handleCustomURL(e.target.value, index)}
-                value={customUrl}
+                error={!!slugErrors[index].slug}
+                helperText={slugErrors[index].slug}
+                onChange={(e) => handleCustomURL(e.target.value, row.id)}
+                value={row.slug}
                 variant="outlined"
                 size="small"
               />
               <TextField
                 fullWidth
-                label={`Notion URL for ${domain}/${customUrl || "about"}`}
+                label={`Notion URL for ${domain}/${row.slug || "about"}`}
                 margin="normal"
                 placeholder={DEFAULT_NOTION_URL}
-                onChange={(e) => handleNotionPageURL(e.target.value, index)}
-                value={notionPageUrl}
+                error={!!slugErrors[index].notionUrl}
+                helperText={slugErrors[index].notionUrl}
+                onChange={(e) => handleNotionPageURL(e.target.value, row.id)}
+                value={row.notionUrl}
                 variant="outlined"
                 size="small"
               />
               <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                 <Button
-                  onClick={() => deleteSlug(index)}
+                  onClick={() => deleteSlug(row.id)}
                   variant="text"
                   color="error"
                   size="small"
@@ -744,15 +925,19 @@ export default function App() {
                 >
                   Remove
                 </Button>
-                {customUrl && (
+                {row.slug && (
                   <Button
-                    onClick={() => toggleSlugMetadata(index)}
+                    onClick={() =>
+                      updateSlugRow(row.id, (current) => ({
+                        expanded: !current.expanded,
+                      }))
+                    }
                     variant="text"
                     size="small"
                     startIcon={
                       <ExpandMoreIcon
                         sx={{
-                          transform: slugMetadataExpanded[index]
+                          transform: row.expanded
                             ? "rotate(180deg)"
                             : "rotate(0deg)",
                           transition: "transform 0.2s",
@@ -765,7 +950,7 @@ export default function App() {
                 )}
               </Stack>
               <Collapse
-                in={slugMetadataExpanded[index] && !!customUrl}
+                in={row.expanded && !!row.slug}
                 timeout="auto"
                 unmountOnExit
               >
@@ -777,8 +962,8 @@ export default function App() {
                     borderRadius: 1,
                   }}
                 >
-                  <Typography variant="caption" color="text.secondary">
-                    Custom metadata for /{customUrl}
+                  <Typography variant="caption" color="textSecondary">
+                    Custom metadata for /{row.slug}
                   </Typography>
                   <TextField
                     fullWidth
@@ -786,9 +971,9 @@ export default function App() {
                     margin="dense"
                     placeholder={pageTitle || "Custom title for this page"}
                     onChange={(e) =>
-                      handlePageMetadata(customUrl, "title", e.target.value)
+                      handlePageMetadata(row.id, "title", e.target.value)
                     }
-                    value={pageMetadata[customUrl]?.title || ""}
+                    value={row.metadata.title || ""}
                     variant="outlined"
                     size="small"
                   />
@@ -800,13 +985,9 @@ export default function App() {
                       pageDescription || "Custom description for this page"
                     }
                     onChange={(e) =>
-                      handlePageMetadata(
-                        customUrl,
-                        "description",
-                        e.target.value,
-                      )
+                      handlePageMetadata(row.id, "description", e.target.value)
                     }
-                    value={pageMetadata[customUrl]?.description || ""}
+                    value={row.metadata.description || ""}
                     variant="outlined"
                     size="small"
                   />
@@ -816,25 +997,24 @@ export default function App() {
                     margin="dense"
                     placeholder="https://example.com/og-image.jpg"
                     onChange={(e) =>
-                      handlePageMetadata(customUrl, "ogImage", e.target.value)
+                      handlePageMetadata(row.id, "ogImage", e.target.value)
                     }
-                    value={pageMetadata[customUrl]?.ogImage || ""}
+                    value={row.metadata.ogImage || ""}
                     variant="outlined"
                     size="small"
                   />
                   {i18n.enabled && (
                     <Box sx={{ mt: 2 }}>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" color="textSecondary">
                         Alternate Language Versions (hreflang)
                       </Typography>
-                      {(pageMetadata[customUrl]?.alternates || []).map(
+                      {(row.metadata.alternates || []).map(
                         (alt, altIndex) => (
                           <Stack
                             key={altIndex}
                             direction="row"
                             spacing={1}
-                            alignItems="flex-start"
-                            sx={{ mt: 1 }}
+                            sx={{ alignItems: "flex-start", mt: 1 }}
                           >
                             <TextField
                               label="Locale"
@@ -842,7 +1022,7 @@ export default function App() {
                               value={alt.locale}
                               onChange={(e) =>
                                 handlePageAlternate(
-                                  customUrl,
+                                  row.id,
                                   altIndex,
                                   "locale",
                                   e.target.value,
@@ -858,7 +1038,7 @@ export default function App() {
                               value={alt.slug}
                               onChange={(e) =>
                                 handlePageAlternate(
-                                  customUrl,
+                                  row.id,
                                   altIndex,
                                   "slug",
                                   e.target.value,
@@ -869,9 +1049,7 @@ export default function App() {
                               sx={{ flex: 1 }}
                             />
                             <Button
-                              onClick={() =>
-                                deletePageAlternate(customUrl, altIndex)
-                              }
+                              onClick={() => deletePageAlternate(row.id, altIndex)}
                               color="error"
                               size="small"
                               sx={{ minWidth: "auto", px: 1 }}
@@ -882,7 +1060,7 @@ export default function App() {
                         ),
                       )}
                       <Button
-                        onClick={() => addPageAlternate(customUrl)}
+                        onClick={() => addPageAlternate(row.id)}
                         size="small"
                         variant="text"
                         startIcon={<AddIcon />}
@@ -924,7 +1102,7 @@ export default function App() {
             >
               <Typography
                 variant="subtitle2"
-                color="text.secondary"
+                color="textSecondary"
                 gutterBottom
               >
                 Page Metadata
@@ -952,6 +1130,8 @@ export default function App() {
                 label="Custom Google Font"
                 margin="normal"
                 placeholder="Open Sans"
+                error={!!googleFontError}
+                helperText={googleFontError}
                 onChange={handleGoogleFont}
                 value={googleFont}
                 variant="outlined"
@@ -985,7 +1165,7 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Typography
                   variant="subtitle2"
-                  color="text.secondary"
+                  color="textSecondary"
                   gutterBottom
                 >
                   Branding & Social
@@ -1047,7 +1227,7 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Typography
                   variant="subtitle2"
-                  color="text.secondary"
+                  color="textSecondary"
                   gutterBottom
                 >
                   Social Preview
@@ -1140,7 +1320,7 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Typography
                   variant="subtitle2"
-                  color="text.secondary"
+                  color="textSecondary"
                   gutterBottom
                 >
                   SEO & AI Attribution
@@ -1176,7 +1356,7 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Typography
                   variant="subtitle2"
-                  color="text.secondary"
+                  color="textSecondary"
                   gutterBottom
                 >
                   Analytics
@@ -1186,7 +1366,11 @@ export default function App() {
                   label="Google Analytics Measurement ID"
                   margin="dense"
                   placeholder="G-XXXXXXXXXX"
-                  helperText="Your GA4 Measurement ID for automatic tracking"
+                  error={!!googleTagError}
+                  helperText={
+                    googleTagError ||
+                    "Your GA4 Measurement ID for automatic tracking"
+                  }
                   onChange={(e) =>
                     handleAnalyticsChange("googleTagId", e.target.value)
                   }
@@ -1199,7 +1383,11 @@ export default function App() {
                   label="Facebook Pixel ID"
                   margin="dense"
                   placeholder="123456789012345"
-                  helperText="Your Facebook Pixel ID for conversion tracking"
+                  error={!!pixelIdError}
+                  helperText={
+                    pixelIdError ||
+                    "Your Facebook Pixel ID for conversion tracking"
+                  }
                   onChange={(e) =>
                     handleAnalyticsChange("facebookPixelId", e.target.value)
                   }
@@ -1212,14 +1400,13 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Stack
                   direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
+                  sx={{ alignItems: "center", justifyContent: "space-between" }}
                 >
                   <Box>
-                    <Typography variant="subtitle2" color="text.secondary">
+                    <Typography variant="subtitle2" color="textSecondary">
                       Cache-Control Headers
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="textSecondary">
                       Improve performance with browser caching
                     </Typography>
                   </Box>
@@ -1284,7 +1471,7 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Typography
                   variant="subtitle2"
-                  color="text.secondary"
+                  color="textSecondary"
                   gutterBottom
                 >
                   Custom Header HTML
@@ -1327,7 +1514,7 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Typography
                   variant="subtitle2"
-                  color="text.secondary"
+                  color="textSecondary"
                   gutterBottom
                 >
                   Custom 404 Page
@@ -1337,7 +1524,11 @@ export default function App() {
                   label="404 Page Notion URL"
                   margin="dense"
                   placeholder={DEFAULT_NOTION_URL}
-                  helperText="Notion page to display when a page is not found"
+                  error={!!custom404Error}
+                  helperText={
+                    custom404Error ||
+                    "Notion page to display when a page is not found"
+                  }
                   onChange={(e) =>
                     handleCustom404Change("notionUrl", e.target.value)
                   }
@@ -1350,12 +1541,12 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Typography
                   variant="subtitle2"
-                  color="text.secondary"
+                  color="textSecondary"
                   gutterBottom
                 >
                   Subdomain Redirects
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="textSecondary">
                   Redirect subdomains (e.g., www) to the main domain or other
                   URLs
                 </Typography>
@@ -1369,10 +1560,12 @@ export default function App() {
                       borderRadius: 1,
                     }}
                   >
-                    <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
                       <TextField
                         label="Subdomain"
                         placeholder="www"
+                        error={!!subdomainErrors[index].subdomain}
+                        helperText={subdomainErrors[index].subdomain}
                         value={redirect.subdomain}
                         onChange={(e) =>
                           handleSubdomainRedirectChange(
@@ -1388,6 +1581,8 @@ export default function App() {
                       <TextField
                         label="Redirect URL"
                         placeholder={`https://${domain}`}
+                        error={!!subdomainErrors[index].redirectUrl}
+                        helperText={subdomainErrors[index].redirectUrl}
                         value={redirect.redirectUrl}
                         onChange={(e) =>
                           handleSubdomainRedirectChange(
@@ -1425,12 +1620,12 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Typography
                   variant="subtitle2"
-                  color="text.secondary"
+                  color="textSecondary"
                   gutterBottom
                 >
                   URL Redirect Rules
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="textSecondary">
                   Redirect specific paths to other URLs (301 permanent / 302
                   temporary). End a path with * to match a prefix, e.g.
                   /blog/* to /posts/*. For thousands of URLs, use{" "}
@@ -1453,10 +1648,12 @@ export default function App() {
                       borderRadius: 1,
                     }}
                   >
-                    <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
                       <TextField
                         label="From Path"
                         placeholder="/old-page or /old/*"
+                        error={!!redirectErrors[index].from}
+                        helperText={redirectErrors[index].from}
                         value={rule.from}
                         onChange={(e) =>
                           handleRedirectRuleChange(
@@ -1472,6 +1669,8 @@ export default function App() {
                       <TextField
                         label="To Path/URL"
                         placeholder="/new-page, /new/* or https://..."
+                        error={!!redirectErrors[index].to}
+                        helperText={redirectErrors[index].to}
                         value={rule.to}
                         onChange={(e) =>
                           handleRedirectRuleChange(index, "to", e.target.value)
@@ -1522,14 +1721,13 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Stack
                   direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
+                  sx={{ alignItems: "center", justifyContent: "space-between" }}
                 >
                   <Box>
-                    <Typography variant="subtitle2" color="text.secondary">
+                    <Typography variant="subtitle2" color="textSecondary">
                       JSON-LD Structured Data
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="textSecondary">
                       Enable rich snippets in search results
                     </Typography>
                   </Box>
@@ -1611,14 +1809,13 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Stack
                   direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
+                  sx={{ alignItems: "center", justifyContent: "space-between" }}
                 >
                   <Box>
-                    <Typography variant="subtitle2" color="text.secondary">
+                    <Typography variant="subtitle2" color="textSecondary">
                       RSS Feed
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="textSecondary">
                       Generate RSS 2.0 feed at /rss.xml
                     </Typography>
                   </Box>
@@ -1687,14 +1884,13 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Stack
                   direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
+                  sx={{ alignItems: "center", justifyContent: "space-between" }}
                 >
                   <Box>
-                    <Typography variant="subtitle2" color="text.secondary">
+                    <Typography variant="subtitle2" color="textSecondary">
                       Internationalization (i18n)
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="textSecondary">
                       Add hreflang tags for multilingual SEO
                     </Typography>
                   </Box>
@@ -1732,14 +1928,13 @@ export default function App() {
               <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "grey.300" }}>
                 <Stack
                   direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
+                  sx={{ alignItems: "center", justifyContent: "space-between" }}
                 >
                   <Box>
-                    <Typography variant="subtitle2" color="text.secondary">
+                    <Typography variant="subtitle2" color="textSecondary">
                       Auto-Generate OG Images
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" color="textSecondary">
                       Create Open Graph images from page titles
                     </Typography>
                   </Box>
@@ -1761,7 +1956,8 @@ export default function App() {
                         label="Background Color"
                         margin="dense"
                         placeholder="#1a1a2e"
-                        helperText="Hex color code"
+                        error={!!ogBackgroundError}
+                        helperText={ogBackgroundError || "Hex color code"}
                         onChange={(e) =>
                           handleOgImageGenerationChange(
                             "backgroundColor",
@@ -1777,7 +1973,8 @@ export default function App() {
                         label="Text Color"
                         margin="dense"
                         placeholder="#ffffff"
-                        helperText="Hex color code"
+                        error={!!ogTextColorError}
+                        helperText={ogTextColorError || "Hex color code"}
                         onChange={(e) =>
                           handleOgImageGenerationChange(
                             "textColor",
@@ -1807,9 +2004,37 @@ export default function App() {
                         sx={{ width: "120px" }}
                       />
                     </Stack>
+                    <TextField
+                      fullWidth
+                      label="Font URL"
+                      margin="dense"
+                      placeholder={DEFAULT_OG_FONT_URL}
+                      error={!!ogFontUrlError}
+                      helperText={
+                        ogFontUrlError ||
+                        "TTF, OTF, WOFF or WOFF2 file used to draw titles. Leave empty for the default, which covers Latin and Japanese."
+                      }
+                      onChange={(e) =>
+                        handleOgImageGenerationChange("fontUrl", e.target.value)
+                      }
+                      value={ogImageGeneration.fontUrl}
+                      variant="outlined"
+                      size="small"
+                    />
                     <Alert severity="info" sx={{ mt: 1 }}>
-                      Auto-generated OG images are used when no custom image is
-                      set. Images are served as SVG at /og-image/[slug].
+                      Auto-generated OG images are served at /og-image/[slug]
+                      when no custom image is set. X, Facebook and LinkedIn
+                      only show PNG images: add an{" "}
+                      <Link
+                        href="https://developers.cloudflare.com/images/optimization/binding/"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Images binding
+                      </Link>{" "}
+                      named IMAGES to the Worker (Settings &gt; Bindings) to
+                      render PNG. Without it, or if rendering fails, the worker
+                      serves SVG.
                     </Alert>
                   </Box>
                 </Collapse>
@@ -1817,8 +2042,8 @@ export default function App() {
             </Paper>
           </Collapse>
 
-          <Stack mt={4} mb={2}>
-            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+          <Stack sx={{ mt: 4, mb: 2 }}>
+            <Typography variant="subtitle2" color="textSecondary" gutterBottom>
               Image Optimization
             </Typography>
             <RadioGroup
@@ -1861,7 +2086,7 @@ export default function App() {
                 />
                 <TextField
                   type="number"
-                  inputProps={{ min: "1", max: "100", step: "1" }}
+                  slotProps={{ htmlInput: { min: 1, max: 100, step: 1 } }}
                   label="Quality"
                   name="imageQuality"
                   placeholder="60"
@@ -1913,7 +2138,7 @@ export default function App() {
                 </FormControl>
                 <TextField
                   type="number"
-                  inputProps={{ min: "0", max: "250", step: "1" }}
+                  slotProps={{ htmlInput: { min: 0, max: 250, step: 1 } }}
                   label="Blur"
                   name="imageBlur"
                   placeholder="0"
@@ -1984,6 +2209,13 @@ export default function App() {
           </Stack>
 
           <Box sx={{ mt: 4 }}>
+            {!noError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                Fix the fields marked in red
+                {advancedError && !optional ? " (including Advanced Settings)" : ""}{" "}
+                to generate the worker script.
+              </Alert>
+            )}
             <Button
               disabled={!noError}
               variant="contained"
@@ -2004,7 +2236,6 @@ export default function App() {
               margin="normal"
               maxRows={8}
               multiline
-              inputRef={textarea}
               value={script}
               variant="outlined"
               sx={{
