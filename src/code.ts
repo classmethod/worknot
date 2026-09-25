@@ -295,6 +295,7 @@ ${
   /*
    * Step 3.8: custom redirect rules (optional)
    * Redirect specific paths to other paths or external URLs (301/302)
+   * A trailing * matches any path with that prefix; a trailing * in "to" appends the rest
    */
   const REDIRECT_RULES = [
 ${
@@ -415,6 +416,13 @@ ${
     }
 
     return newResponse;
+  }
+
+  function matchRedirectRule(rule, pathname) {
+    if (!rule.from.endsWith('*')) return pathname === rule.from ? rule.to : null;
+    const prefix = rule.from.slice(0, -1);
+    if (!pathname.startsWith(prefix)) return null;
+    return rule.to.endsWith('*') ? rule.to.slice(0, -1) + pathname.slice(prefix.length) : rule.to;
   }
 
   function generateSitemap() {
@@ -673,10 +681,12 @@ ${
 
     // Handle custom redirect rules (Issue #32)
     for (const rule of REDIRECT_RULES) {
-      if (url.pathname === rule.from) {
-        const redirectUrl = rule.to.startsWith('http')
-          ? rule.to
-          : 'https://' + MY_DOMAIN + rule.to;
+      const target = matchRedirectRule(rule, url.pathname);
+      if (target !== null) {
+        let redirectUrl = target.startsWith('http')
+          ? target
+          : 'https://' + MY_DOMAIN + target;
+        if (url.search && !redirectUrl.includes('?')) redirectUrl += url.search;
         return Response.redirect(redirectUrl, rule.permanent ? 301 : 302);
       }
     }

@@ -1432,7 +1432,16 @@ export default function App() {
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Redirect specific paths to other URLs (301 permanent / 302
-                  temporary)
+                  temporary). End a path with * to match a prefix, e.g.
+                  /blog/* to /posts/*. For thousands of URLs, use{" "}
+                  <Link
+                    href="https://developers.cloudflare.com/rules/url-forwarding/bulk-redirects/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Cloudflare Bulk Redirects
+                  </Link>
+                  .
                 </Typography>
                 {redirectRules.map((rule, index) => (
                   <Box
@@ -1447,7 +1456,7 @@ export default function App() {
                     <Stack direction="row" spacing={1} alignItems="flex-start">
                       <TextField
                         label="From Path"
-                        placeholder="/old-page"
+                        placeholder="/old-page or /old/*"
                         value={rule.from}
                         onChange={(e) =>
                           handleRedirectRuleChange(
@@ -1462,7 +1471,7 @@ export default function App() {
                       />
                       <TextField
                         label="To Path/URL"
-                        placeholder="/new-page or https://..."
+                        placeholder="/new-page, /new/* or https://..."
                         value={rule.to}
                         onChange={(e) =>
                           handleRedirectRuleChange(index, "to", e.target.value)
