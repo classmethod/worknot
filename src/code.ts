@@ -135,6 +135,20 @@ function getId(url: string): string {
   }
 }
 
+// Serialize user input as a JS string literal.
+function str(value: string | undefined): string {
+  return JSON.stringify(value || "");
+}
+
+// Serialize multi-line user input as a JS template literal, keeping it readable.
+function tpl(value: string | undefined): string {
+  const escaped = (value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$\{/g, "\\${");
+  return "`" + escaped + "`";
+}
+
 export default function code(data: CodeData): string {
   const {
     myDomain,
@@ -167,7 +181,7 @@ export default function code(data: CodeData): string {
   return `  /* CONFIGURATION STARTS HERE */
 
   /* Step 1: enter your domain name like something.example.com */
-  const MY_DOMAIN = '${url}';
+  const MY_DOMAIN = ${str(url)};
 
   /*
    * Step 2: enter your URL slug to page ID mapping
@@ -175,18 +189,18 @@ export default function code(data: CodeData): string {
    * The value on the right is the Notion page ID
    */
   const SLUG_TO_PAGE = {
-    '': '${getId(notionUrl)}',
+    '': ${str(getId(notionUrl))},
 ${slugs
   .map(([pageUrl, notionPageUrl]) => {
     const id = getId(notionPageUrl);
     if (!id || !pageUrl) return "";
-    return `    '${pageUrl}': '${id}',\n`;
+    return `    ${str(pageUrl)}: ${str(id)},\n`;
   })
   .join("")}  };
 
   /* Step 3: enter your page title and description for SEO purposes */
-  const PAGE_TITLE = '${pageTitle || ""}';
-  const PAGE_DESCRIPTION = '${pageDescription || ""}';
+  const PAGE_TITLE = ${str(pageTitle)};
+  const PAGE_DESCRIPTION = ${str(pageDescription)};
 
   /*
    * Step 3.1: enter per-page metadata for better SEO (optional)
@@ -199,41 +213,41 @@ ${slugs
    * Enable to add JSON-LD schema markup to your pages
    */
   const STRUCTURED_DATA_ENABLED = ${structuredData?.enabled || false};
-  const SCHEMA_TYPE = '${structuredData?.schemaType || "WebPage"}';
-  const ORGANIZATION_NAME = '${structuredData?.organizationName || ""}';
-  const LOGO_URL = '${structuredData?.logoUrl || ""}';
+  const SCHEMA_TYPE = ${str(structuredData?.schemaType || "WebPage")};
+  const ORGANIZATION_NAME = ${str(structuredData?.organizationName)};
+  const LOGO_URL = ${str(structuredData?.logoUrl)};
 
   /*
    * Step 3.3: branding configuration (optional)
    * Replace Notion branding with your own and add social media handles
    */
-  const SITE_NAME = '${branding?.siteName || ""}';
-  const BRAND_REPLACEMENT = '${branding?.brandReplacement || ""}';
-  const TWITTER_HANDLE = '${branding?.twitterHandle || ""}';
-  const FAVICON_URL = '${branding?.faviconUrl || ""}';
+  const SITE_NAME = ${str(branding?.siteName)};
+  const BRAND_REPLACEMENT = ${str(branding?.brandReplacement)};
+  const TWITTER_HANDLE = ${str(branding?.twitterHandle)};
+  const FAVICON_URL = ${str(branding?.faviconUrl)};
 
   /*
    * Step 3.3.1: social preview configuration (optional)
    * Enhance Open Graph and Twitter Card meta tags for better link previews
    */
-  const DEFAULT_OG_IMAGE = '${socialPreview?.defaultImage || ""}';
+  const DEFAULT_OG_IMAGE = ${str(socialPreview?.defaultImage)};
   const OG_IMAGE_WIDTH = ${socialPreview?.imageWidth || 1200};
   const OG_IMAGE_HEIGHT = ${socialPreview?.imageHeight || 630};
-  const TWITTER_CARD_TYPE = '${socialPreview?.twitterCardType || "summary_large_image"}';
-  const OG_LOCALE = '${socialPreview?.locale || ""}';
+  const TWITTER_CARD_TYPE = ${str(socialPreview?.twitterCardType || "summary_large_image")};
+  const OG_LOCALE = ${str(socialPreview?.locale)};
 
   /*
    * Step 3.4: SEO configuration (optional)
    * AI attribution for proper citation in AI-generated content
    */
-  const AI_ATTRIBUTION = '${seo?.aiAttribution || ""}';
+  const AI_ATTRIBUTION = ${str(seo?.aiAttribution)};
 
   /*
    * Step 3.5: analytics configuration (optional)
    * Add your Google Analytics 4 Measurement ID and/or Facebook Pixel ID for built-in tracking
    */
-  const GOOGLE_TAG_ID = '${analytics?.googleTagId || ""}';
-  const FACEBOOK_PIXEL_ID = '${analytics?.facebookPixelId || ""}';
+  const GOOGLE_TAG_ID = ${str(analytics?.googleTagId)};
+  const FACEBOOK_PIXEL_ID = ${str(analytics?.facebookPixelId)};
 
   /*
    * Step 3.5.1: caching configuration (optional)
@@ -248,13 +262,13 @@ ${slugs
    * Step 3.6: custom HTML header injection (optional)
    * Add custom HTML to the top of the page body (e.g., navigation, announcements)
    */
-  const CUSTOM_HEADER = \`${customHtml?.headerHtml || ""}\`;
+  const CUSTOM_HEADER = ${tpl(customHtml?.headerHtml)};
 
   /*
    * Step 3.7: custom 404 page configuration (optional)
    * Specify a Notion page ID to display when a page is not found
    */
-  const CUSTOM_404_PAGE_ID = '${custom404?.notionUrl ? getId(custom404.notionUrl) : ""}';
+  const CUSTOM_404_PAGE_ID = ${str(custom404?.notionUrl ? getId(custom404.notionUrl) : "")};
 
   /*
    * Step 3.7: subdomain redirect configuration (optional)
@@ -264,7 +278,7 @@ ${slugs
 ${
   subdomainRedirects
     ?.filter((r) => r.subdomain && r.redirectUrl)
-    .map((r) => `    '${r.subdomain}': '${r.redirectUrl}',\n`)
+    .map((r) => `    ${str(r.subdomain)}: ${str(r.redirectUrl)},\n`)
     .join("") || ""
 }  };
 
@@ -278,7 +292,7 @@ ${
     ?.filter((r) => r.from && r.to)
     .map(
       (r) =>
-        `    { from: '${r.from}', to: '${r.to}', permanent: ${r.permanent} },\n`,
+        `    { from: ${str(r.from)}, to: ${str(r.to)}, permanent: ${!!r.permanent} },\n`,
     )
     .join("") || ""
 }  ];
@@ -288,32 +302,32 @@ ${
    * Generate an RSS 2.0 feed at /rss.xml for blog-style sites
    */
   const RSS_ENABLED = ${rss?.enabled || false};
-  const RSS_TITLE = '${rss?.title || ""}';
-  const RSS_DESCRIPTION = '${rss?.description || ""}';
-  const RSS_LANGUAGE = '${rss?.language || "en-us"}';
+  const RSS_TITLE = ${str(rss?.title)};
+  const RSS_DESCRIPTION = ${str(rss?.description)};
+  const RSS_LANGUAGE = ${str(rss?.language || "en-us")};
 
   /*
    * Step 3.10: Internationalization (i18n) configuration (optional)
    * Add hreflang tags for multilingual SEO
    */
   const I18N_ENABLED = ${i18n?.enabled || false};
-  const DEFAULT_LOCALE = '${i18n?.defaultLocale || "en"}';
+  const DEFAULT_LOCALE = ${str(i18n?.defaultLocale || "en")};
 
   /*
    * Step 3.11: Dynamic OG Image Generation (optional)
    * Auto-generate Open Graph images from page titles
    */
   const OG_IMAGE_GENERATION_ENABLED = ${ogImageGeneration?.enabled || false};
-  const OG_IMAGE_BG_COLOR = '${ogImageGeneration?.backgroundColor || "#1a1a2e"}';
-  const OG_IMAGE_TEXT_COLOR = '${ogImageGeneration?.textColor || "#ffffff"}';
+  const OG_IMAGE_BG_COLOR = ${str(ogImageGeneration?.backgroundColor || "#1a1a2e")};
+  const OG_IMAGE_TEXT_COLOR = ${str(ogImageGeneration?.textColor || "#ffffff")};
   const OG_IMAGE_FONT_SIZE = ${ogImageGeneration?.fontSize || 64};
 
   /* Step 4: enter a Google Font name, you can choose from https://fonts.google.com */
-  const GOOGLE_FONT = '${googleFont || ""}';
+  const GOOGLE_FONT = ${str(googleFont)};
 
   /* Step 5: enter any custom scripts and styles you'd like */
-  const CUSTOM_SCRIPT = \`${customScript || ""}\`;
-  const CUSTOM_CSS = \`${customCss || ""}\`;
+  const CUSTOM_SCRIPT = ${tpl(customScript)};
+  const CUSTOM_CSS = ${tpl(customCss)};
 
   /*
    * Step 6: enter your preference of image optimization
@@ -321,17 +335,17 @@ ${
    * Requires Image Resizing to be enabled in Cloudflare dashboard
    * See: https://developers.cloudflare.com/images/transform-images/transform-via-workers/
    */
-  const IMAGE_OPTIMIZATION = \`${optionImage.imageResizeType || ""}\`;
+  const IMAGE_OPTIMIZATION = ${str(optionImage.imageResizeType)};
   // If you choose 'resize' above, configure the options below
   const IMAGE_RESIZE_OPTIONS = {
     width: ${optionImage.imageWidth ? Math.trunc(optionImage.imageWidth) : "undefined"},
     height: ${optionImage.imageHeight ? Math.trunc(optionImage.imageHeight) : "undefined"},
     quality: ${optionImage.imageQuality ? Math.trunc(optionImage.imageQuality) : "undefined"},
-    format: '${optionImage.imageFormat || "auto"}',
-    fit: '${optionImage.imageFit || "scale-down"}',
+    format: ${str(optionImage.imageFormat || "auto")},
+    fit: ${str(optionImage.imageFit || "scale-down")},
     blur: ${optionImage.imageBlur || "undefined"},
     anim: ${optionImage.imageAnim === false ? "false" : "true"},
-    metadata: '${optionImage.imageMetadata || "none"}'
+    metadata: ${str(optionImage.imageMetadata || "none")}
   };
 
   /* CONFIGURATION ENDS HERE */
@@ -513,7 +527,7 @@ ${
 
   const NOTION_SITE_DOMAIN = (() => {
     try {
-      return new URL('${notionUrl}').hostname;
+      return new URL(${str(notionUrl)}).hostname;
     } catch {
       return 'www.notion.so';
     }
@@ -855,14 +869,14 @@ ${
     element(element) {
       // Add canonical URL and robots meta tag for SEO (Issue #8 & #9)
       const canonicalUrl = 'https://' + MY_DOMAIN + (this.slug ? '/' + this.slug : '');
-      element.append(\`<link rel="canonical" href="\${canonicalUrl}">\`, { html: true });
+      element.append(\`<link rel="canonical" href="\${escapeHtml(canonicalUrl)}">\`, { html: true });
       element.append(\`<meta name="robots" content="index, follow">\`, { html: true });
 
       // Add custom favicon if configured (Issue #16)
       if (FAVICON_URL !== '') {
-        element.append(\`<link rel="icon" href="\${FAVICON_URL}" type="image/x-icon">\`, { html: true });
-        element.append(\`<link rel="shortcut icon" href="\${FAVICON_URL}" type="image/x-icon">\`, { html: true });
-        element.append(\`<link rel="apple-touch-icon" href="\${FAVICON_URL}">\`, { html: true });
+        element.append(\`<link rel="icon" href="\${escapeHtml(FAVICON_URL)}" type="image/x-icon">\`, { html: true });
+        element.append(\`<link rel="shortcut icon" href="\${escapeHtml(FAVICON_URL)}" type="image/x-icon">\`, { html: true });
+        element.append(\`<link rel="apple-touch-icon" href="\${escapeHtml(FAVICON_URL)}">\`, { html: true });
       }
 
       // Add Google Analytics 4 if configured (Issue #14)
@@ -897,8 +911,8 @@ ${
 
       // Add Twitter/X meta tags for social cards (Issue #19)
       if (TWITTER_HANDLE !== '') {
-        element.append(\`<meta name="twitter:site" content="\${TWITTER_HANDLE}">\`, { html: true });
-        element.append(\`<meta name="twitter:creator" content="\${TWITTER_HANDLE}">\`, { html: true });
+        element.append(\`<meta name="twitter:site" content="\${escapeHtml(TWITTER_HANDLE)}">\`, { html: true });
+        element.append(\`<meta name="twitter:creator" content="\${escapeHtml(TWITTER_HANDLE)}">\`, { html: true });
       }
 
       // Add enhanced Open Graph and Twitter Card tags (Issue #34)
@@ -914,38 +928,38 @@ ${
 
       // Add locale if configured
       if (OG_LOCALE !== '') {
-        element.append(\`<meta property="og:locale" content="\${OG_LOCALE}">\`, { html: true });
+        element.append(\`<meta property="og:locale" content="\${escapeHtml(OG_LOCALE)}">\`, { html: true });
       }
 
       // Add auto-generated OG image if no custom image is set (Issue #36)
       if (!effectiveOgImage && OG_IMAGE_GENERATION_ENABLED) {
         const generatedUrl = \`https://\${MY_DOMAIN}/og-image/\${this.slug}\`;
-        element.append(\`<meta property="og:image" content="\${generatedUrl}">\`, { html: true });
+        element.append(\`<meta property="og:image" content="\${escapeHtml(generatedUrl)}">\`, { html: true });
         element.append(\`<meta property="og:image:width" content="1200">\`, { html: true });
         element.append(\`<meta property="og:image:height" content="630">\`, { html: true });
-        element.append(\`<meta name="twitter:image" content="\${generatedUrl}">\`, { html: true });
+        element.append(\`<meta name="twitter:image" content="\${escapeHtml(generatedUrl)}">\`, { html: true });
       }
 
       // Add hreflang tags for multilingual SEO (Issue #35)
       if (I18N_ENABLED) {
         // Self-referencing hreflang for current page
-        element.append(\`<link rel="alternate" hreflang="\${DEFAULT_LOCALE}" href="\${canonicalUrl}">\`, { html: true });
+        element.append(\`<link rel="alternate" hreflang="\${escapeHtml(DEFAULT_LOCALE)}" href="\${escapeHtml(canonicalUrl)}">\`, { html: true });
 
         // Add alternate language versions from page metadata
         const pageAlternates = this.metadata.alternates || [];
         for (const alt of pageAlternates) {
           const href = alt.url || \`https://\${MY_DOMAIN}\${alt.slug}\`;
-          element.append(\`<link rel="alternate" hreflang="\${alt.locale}" href="\${href}">\`, { html: true });
+          element.append(\`<link rel="alternate" hreflang="\${escapeHtml(alt.locale)}" href="\${escapeHtml(href)}">\`, { html: true });
         }
 
         // x-default for language/region selector pages
-        element.append(\`<link rel="alternate" hreflang="x-default" href="\${canonicalUrl}">\`, { html: true });
+        element.append(\`<link rel="alternate" hreflang="x-default" href="\${escapeHtml(canonicalUrl)}">\`, { html: true });
       }
 
       // Add AI crawler attribution meta tags (Issue #13)
       if (AI_ATTRIBUTION !== '') {
-        element.append(\`<meta name="ai:source_url" content="\${canonicalUrl}">\`, { html: true });
-        element.append(\`<meta name="ai:source_attribution" content="\${AI_ATTRIBUTION}">\`, { html: true });
+        element.append(\`<meta name="ai:source_url" content="\${escapeHtml(canonicalUrl)}">\`, { html: true });
+        element.append(\`<meta name="ai:source_attribution" content="\${escapeHtml(AI_ATTRIBUTION)}">\`, { html: true });
       }
 
       // Add JSON-LD structured data for rich search results (Issue #10)
@@ -980,11 +994,11 @@ ${
             structuredData.logo = LOGO_URL;
           }
         }
-        element.append(\`<script type="application/ld+json">\${JSON.stringify(structuredData)}</script>\`, { html: true });
+        element.append(\`<script type="application/ld+json">\${JSON.stringify(structuredData).replace(/</g, '\\\\u003c')}</script>\`, { html: true });
       }
 
       if (GOOGLE_FONT !== '') {
-        element.append(\`<link href="https://fonts.googleapis.com/css?family=\${GOOGLE_FONT.replace(' ', '+')}:Regular,Bold,Italic&display=swap" rel="stylesheet">
+        element.append(\`<link href="https://fonts.googleapis.com/css?family=\${GOOGLE_FONT.replace(/ /g, '+')}:Regular,Bold,Italic&display=swap" rel="stylesheet">
         <style>* { font-family: "\${GOOGLE_FONT}" !important; }</style>\`, {
           html: true
         });
