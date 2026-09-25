@@ -87,6 +87,8 @@ Worknot includes automated monitoring for Notion client-side changes that could 
 
 When changes are detected, an issue is automatically created. See `scripts/notion-monitor.sh` for details.
 
+The same workflow runs a rendering check (`npm run check:render`, see `scripts/render-check.mjs`). It generates a worker for a public [test page](https://succinct-scar-f20.notion.site/3e6558d7de1781bb89a9fb6adc4012d6), runs it with `wrangler dev`, and loads the page in Chromium. It checks database views, images, PDF and file blocks, Mermaid, anchor links, database items and browser history. Every check also runs against notion.site, and only failures that happen through Worknot alone are reported. To run it locally, run `npx playwright install chromium` first.
+
 ## License
 
 MIT
