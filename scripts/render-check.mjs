@@ -195,8 +195,12 @@ const CHECKS = {
     if (!(await page.$(".notion-file-block"))) return "file block missing";
     return null;
   },
-  "mermaid diagram": async ({ page }) =>
-    (await page.$(".notion-code-block svg")) ? null : "mermaid diagram not rendered",
+  "mermaid diagram": async ({ page }) => {
+    // Code blocks render lazily once they scroll into view
+    await page.locator(".notion-code-block").first().scrollIntoViewIfNeeded();
+    const svg = await page.waitForSelector(".notion-code-block svg", { timeout: 15000 }).catch(() => null);
+    return svg ? null : "mermaid diagram not rendered";
+  },
   "embeds and bookmarks": async ({ page }) => {
     const embeds = await page.$$(".notion-embed-block, .notion-bookmark-block, .notion-tweet-block");
     return embeds.length ? null : "skip: no embed or bookmark blocks on the test page";
