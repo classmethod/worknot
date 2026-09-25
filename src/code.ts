@@ -47,6 +47,7 @@ export interface SocialPreviewOptions {
 
 export interface SeoOptions {
   aiAttribution?: string;
+  robotsRules?: string;
 }
 
 export interface AnalyticsOptions {
@@ -239,8 +240,10 @@ ${slugs
   /*
    * Step 3.4: SEO configuration (optional)
    * AI attribution for proper citation in AI-generated content
+   * robots.txt rules (the sitemap line is added automatically)
    */
   const AI_ATTRIBUTION = ${str(seo?.aiAttribution)};
+  const ROBOTS_RULES = ${tpl(seo?.robotsRules?.trim())};
 
   /*
    * Step 3.5: analytics configuration (optional)
@@ -679,7 +682,7 @@ ${
     // Use the original Notion site domain instead of www.notion.so
     url.hostname = NOTION_SITE_DOMAIN;
     if (url.pathname === '/robots.txt') {
-      return new Response('Sitemap: https://' + MY_DOMAIN + '/sitemap.xml');
+      return new Response((ROBOTS_RULES || 'User-agent: *\\nAllow: /') + '\\n\\nSitemap: https://' + MY_DOMAIN + '/sitemap.xml\\n');
     }
     if (url.pathname === '/sitemap.xml') {
       let response = new Response(generateSitemap());
@@ -695,6 +698,9 @@ ${
     if (url.pathname.startsWith('/og-image/') && OG_IMAGE_GENERATION_ENABLED) {
       const slug = url.pathname.replace('/og-image/', '');
       return generateOgImage(slug);
+    }
+    if (isUnknownPageNavigation(request, url.pathname)) {
+      return notFoundResponse(url);
     }
     let response;
     const isAppJs = url.pathname.startsWith('/app') && url.pathname.endsWith('js');
@@ -725,7 +731,8 @@ ${
                 pageId = SLUG_TO_PAGE[slug];
               } else {
                 const match = refPath.match(/[0-9a-f]{32}/);
-                if (match) pageId = match[0];
+                // Any other document path was served as the custom 404 page
+                pageId = match ? match[0] : CUSTOM_404_PAGE_ID;
               }
             } catch (e) {}
           }
@@ -803,20 +810,7 @@ ${
 
     // Handle 404 with custom page if configured (Issue #12)
     if (response.status === 404 && CUSTOM_404_PAGE_ID !== '') {
-      const notFoundUrl = new URL(url);
-      notFoundUrl.pathname = '/' + CUSTOM_404_PAGE_ID;
-      const notFoundResponse = await fetch(notFoundUrl.toString(), {
-        headers: PAGE_FETCH_HEADERS,
-      });
-      // Return custom 404 page content with 404 status
-      response = new Response(notFoundResponse.body, {
-        status: 404,
-        statusText: 'Not Found',
-        headers: notFoundResponse.headers,
-      });
-      response.headers.delete('Content-Security-Policy');
-      response.headers.delete('X-Content-Security-Policy');
-      return appendJavascript(response, SLUG_TO_PAGE, '404', url);
+      return notFoundResponse(url);
     }
 
     // Get current slug from page ID for canonical URL
@@ -1066,8 +1060,9 @@ ${
   }
 
   class BodyRewriter {
-    constructor(SLUG_TO_PAGE) {
+    constructor(SLUG_TO_PAGE, notFound) {
       this.SLUG_TO_PAGE = SLUG_TO_PAGE;
+      this.notFound = notFound;
     }
     element(element) {
       // Add custom header HTML at the top of body if configured (Issue #20)
@@ -1078,6 +1073,8 @@ ${
       <script>
       if (window.CONFIG) window.CONFIG.domainBaseUrl = 'https://\${MY_DOMAIN}';
       const SLUG_TO_PAGE = \${JSON.stringify(this.SLUG_TO_PAGE)};
+      // Keep the requested URL when the custom 404 page is shown
+      const NOT_FOUND_PATH = \${this.notFound} ? location.pathname : null;
       const PAGE_TO_SLUG = {};
       const slugs = [];
       const pages = [];
@@ -1172,7 +1169,7 @@ ${
       }, 2000);
       const replaceState = window.history.replaceState;
       window.history.replaceState = function(state) {
-        if (arguments[1] !== 'bypass' && slugs.includes(getSlug())) return;
+        if (arguments[1] !== 'bypass' && (slugs.includes(getSlug()) || location.pathname === NOT_FOUND_PATH)) return;
         return replaceState.apply(window.history, arguments);
       };
       const pushState = window.history.pushState;
@@ -1196,6 +1193,49 @@ ${
     }
   }
 
+  // Notion answers 200 with its app shell for any path, so decide here whether a
+  // page navigation points at a real page: the root, a slug, or a page ID.
+  function isUnknownPageNavigation(request, pathname) {
+    if (request.method !== 'GET' && request.method !== 'HEAD') return false;
+    const dest = request.headers.get('Sec-Fetch-Dest');
+    const isNavigation = dest ? dest === 'document' : (request.headers.get('Accept') || '').includes('text/html');
+    if (!isNavigation || /[0-9a-f]{32}/.test(pathname) || /\\.[a-z0-9]+$/i.test(pathname)) return false;
+    let path = pathname.slice(1);
+    try {
+      path = decodeURIComponent(path);
+    } catch (e) {}
+    return !SLUG_TO_PAGE.hasOwnProperty(path) && !SLUG_TO_PAGE.hasOwnProperty(pathname.slice(1));
+  }
+
+  async function notFoundResponse(url) {
+    if (CUSTOM_404_PAGE_ID === '') {
+      return new Response(
+        \`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Page not found</title></head>
+        <body style="font-family:system-ui;text-align:center;padding:60px 20px">
+        <h1>404</h1>
+        <p>This page could not be found.</p>
+        <p><a href="/">Go to the home page</a></p>
+        </body></html>\`,
+        { status: 404, headers: { 'Content-Type': 'text/html;charset=UTF-8' } }
+      );
+    }
+    const notFoundUrl = new URL(url);
+    notFoundUrl.hostname = NOTION_SITE_DOMAIN;
+    notFoundUrl.pathname = '/' + CUSTOM_404_PAGE_ID;
+    const page = await fetch(notFoundUrl.toString(), {
+      headers: PAGE_FETCH_HEADERS,
+    });
+    // Return custom 404 page content with 404 status
+    const response = new Response(page.body, {
+      status: 404,
+      statusText: 'Not Found',
+      headers: page.headers,
+    });
+    response.headers.delete('Content-Security-Policy');
+    response.headers.delete('X-Content-Security-Policy');
+    return appendJavascript(response, SLUG_TO_PAGE, '404', url);
+  }
+
   async function appendJavascript(res, SLUG_TO_PAGE, slug, url) {
     const metaRewriter = new MetaRewriter(slug);
     const headRewriter = new HeadRewriter(slug);
@@ -1206,7 +1246,7 @@ ${
       .on('meta', metaRewriter)
       .on('link', linkRewriter)
       .on('head', headRewriter)
-      .on('body', new BodyRewriter(SLUG_TO_PAGE))
+      .on('body', new BodyRewriter(SLUG_TO_PAGE, res.status === 404))
       .transform(res);
     return applyCacheHeaders(transformed, url, contentType);
   }`;
