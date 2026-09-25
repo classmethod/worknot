@@ -1059,6 +1059,14 @@ ${
     }
   }
 
+  // Titles and descriptions the client script keeps after Notion rewrites them
+  const CLIENT_META = JSON.stringify({
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+    brand: SITE_NAME || BRAND_REPLACEMENT,
+    pages: PAGE_METADATA,
+  }).replace(/</g, '\\\\u003c');
+
   class BodyRewriter {
     constructor(SLUG_TO_PAGE, notFound) {
       this.SLUG_TO_PAGE = SLUG_TO_PAGE;
@@ -1123,6 +1131,35 @@ ${
         nav.appendChild(el);
         onLight();
       }
+      // Notion sets its own title and meta tags after load; keep the configured ones
+      const META = \${CLIENT_META};
+      function setContent(selector, value) {
+        const tag = document.querySelector(selector);
+        if (tag && value && tag.getAttribute('content') !== value) tag.setAttribute('content', value);
+      }
+      function applyMeta() {
+        const slug = location.pathname === NOT_FOUND_PATH ? '404'
+          : PAGE_TO_SLUG[getPage()] ?? (slugs.includes(getSlug()) ? getSlug() : '');
+        const page = META.pages[slug] || {};
+        let title = page.title || META.title;
+        if (!title && META.brand && document.title.endsWith(' | Notion')) {
+          title = document.title.slice(0, -' | Notion'.length) + ' | ' + META.brand;
+        }
+        if (title && document.title !== title) document.title = title;
+        setContent('meta[property="og:title"]', title);
+        setContent('meta[name="twitter:title"]', title);
+        const description = page.description || META.description;
+        setContent('meta[name="description"]', description);
+        setContent('meta[property="og:description"]', description);
+        setContent('meta[name="twitter:description"]', description);
+      }
+      new MutationObserver(applyMeta).observe(document.head, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['content'],
+      });
       const observer = new MutationObserver(function() {
         if (redirected) return;
         const nav = document.querySelector('.notion-topbar');
