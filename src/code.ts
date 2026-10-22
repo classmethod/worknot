@@ -951,6 +951,9 @@ ${
       // like "/about"). Without this, all slug pages render the root page (#90).
       try {
         const reqJson = JSON.parse(reqBody);
+        // Mobile database-peek requests can omit the published-site context.
+        if (!reqJson.spaceDomain) reqJson.spaceDomain = NOTION_SPACE_DOMAIN;
+        reqJson.requestedOnPublicDomain = true;
         if (!reqJson.blockId) {
           let pageId = '';
           const referer = request.headers.get('Referer');
@@ -970,9 +973,9 @@ ${
           if (!pageId) pageId = SLUG_TO_PAGE[''] || '';
           if (pageId) {
             reqJson.blockId = pageId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
-            reqBody = JSON.stringify(reqJson);
           }
         }
+        reqBody = JSON.stringify(reqJson);
       } catch (e) {}
       // Proxy getPublicPageData and rewrite domain info
       response = await fetch(url.toString(), {
