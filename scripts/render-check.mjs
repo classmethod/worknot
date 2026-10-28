@@ -250,6 +250,17 @@ const CHECKS = {
       .find((href) => new URL(href).host !== host);
     return offsite ? `links to notion.site: ${offsite}` : null;
   },
+  // The Notion client rewrites both tags after load; the worker keeps them on the page's own URL
+  "canonical url": async ({ page, target }) => {
+    const tags = await page.evaluate(() => ({
+      canonical: document.querySelector('link[rel="canonical"]')?.getAttribute("href"),
+      ogUrl: document.querySelector('meta[property="og:url"]')?.getAttribute("content"),
+    }));
+    if (!tags.canonical || !tags.ogUrl) return `missing: ${JSON.stringify(tags)}`;
+    const canonical = new URL(tags.canonical, target.origin);
+    if (canonical.origin !== target.origin || !target.isRoot(canonical.pathname)) return `canonical: ${tags.canonical}`;
+    return new URL(tags.ogUrl, target.origin).href === canonical.href ? null : `og:url: ${tags.ogUrl}`;
+  },
   "no errors": async ({ errors, failures }) => {
     const problems = [...errors, ...failures];
     return problems.length ? problems.slice(0, 5).join("; ") : null;
@@ -257,7 +268,7 @@ const CHECKS = {
 };
 
 const GROUPS = [
-  ["page renders", "database views", "database rows and formula", "images load", "pdf and file blocks", "mermaid diagram", "embeds and bookmarks", "anchor link", "crawler content", "no errors"],
+  ["page renders", "database views", "database rows and formula", "images load", "pdf and file blocks", "mermaid diagram", "embeds and bookmarks", "anchor link", "crawler content", "canonical url", "no errors"],
   // Checks that navigate run on a page of their own
   ["database item stays on domain"],
   ["navigation and history"],

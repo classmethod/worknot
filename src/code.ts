@@ -1366,8 +1366,9 @@ ${
     }
   }
 
-  // Titles and descriptions the client script keeps after Notion rewrites them
+  // Titles, descriptions and canonical URLs the client script keeps after Notion rewrites them
   const CLIENT_META = JSON.stringify({
+    origin: 'https://' + MY_DOMAIN,
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,
     brand: SITE_NAME || BRAND_REPLACEMENT,
@@ -1444,15 +1445,21 @@ ${
       }
       // Notion sets its own title and meta tags after load; keep the configured ones
       const META = \${CLIENT_META};
-      function setContent(selector, value) {
-        const tag = document.querySelector(selector);
-        if (tag && value && tag.getAttribute('content') !== value) tag.setAttribute('content', value);
+      function setContent(selector, value, attribute = 'content') {
+        for (const tag of document.querySelectorAll(selector)) {
+          if (value && tag.getAttribute(attribute) !== value) tag.setAttribute(attribute, value);
+        }
       }
       function applyMeta() {
         const slug = location.pathname === NOT_FOUND_PATH ? '404'
           : PAGE_TO_SLUG[getPage()] ?? (slugs.includes(getSlug()) ? getSlug() : null);
-        // Like on the server, pages without a slug get no per-page metadata
+        // Like on the server, pages without a slug get no per-page metadata and
+        // are canonical at their page ID
         const page = (slug !== null && META.pages[slug]) || {};
+        const path = slug !== null ? (slug ? '/' + slug : '') : (getPage() ? '/' + getPage() : location.pathname);
+        setContent('link[rel="canonical"]', META.origin + path, 'href');
+        setContent('meta[property="og:url"]', META.origin + path);
+        setContent('meta[name="twitter:url"]', META.origin + path);
         let title = page.title || META.title;
         if (!title && META.brand && document.title.endsWith(' | Notion')) {
           title = document.title.slice(0, -' | Notion'.length) + ' | ' + META.brand;
@@ -1470,7 +1477,7 @@ ${
         childList: true,
         characterData: true,
         attributes: true,
-        attributeFilter: ['content'],
+        attributeFilter: ['content', 'href'],
       });
       const observer = new MutationObserver(function() {
         if (redirected) return;
