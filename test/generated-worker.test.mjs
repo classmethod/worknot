@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { gzipSync } from 'node:zlib';
 import { createServer } from 'vite';
 
@@ -309,4 +310,85 @@ test('the home page keeps its canonical URL and metadata', async (t) => {
     ogImage: 'https://notes.example.com/og-image/',
     title: 'Home title',
   });
+});
+
+
+test('generated client keeps canonical metadata after Notion rewrites it on each route', async (t) => {
+  const handlers = await rewriteHandlers(t, '/', HOME_METADATA);
+  const appended = [];
+  handlers.body.element({ append: (html) => appended.push(html) });
+  const script = appended.join('').match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script, 'worker should append its client script');
+
+  function tag(attribute, value) {
+    const attributes = { [attribute]: value };
+    return {
+      getAttribute: (name) => attributes[name] ?? null,
+      setAttribute: (name, next) => { attributes[name] = next; },
+    };
+  }
+  const tags = {
+    canonical: [tag('href', 'https://notes.example.com'), tag('href', 'https://notes.example.com')],
+    ogUrl: [tag('content', 'https://notes.example.com'), tag('content', 'https://notes.example.com')],
+    twitterUrl: [tag('content', 'https://notes.example.com'), tag('content', 'https://notes.example.com')],
+  };
+  const selectors = new Map([
+    ['link[rel="canonical"]', tags.canonical],
+    ['meta[property="og:url"]', tags.ogUrl],
+    ['meta[name="twitter:url"]', tags.twitterUrl],
+  ]);
+  const observers = [];
+  class TestMutationObserver {
+    constructor(callback) { this.callback = callback; observers.push(this); }
+    observe() {}
+  }
+  const location = { protocol: 'https:', host: 'notes.example.com', pathname: '/' };
+  const history = {
+    state: {},
+    pushState(_state, _title, url) {
+      if (url !== undefined) location.pathname = new URL(url, 'https://notes.example.com').pathname;
+    },
+    replaceState(_state, _title, url) {
+      if (url !== undefined) location.pathname = new URL(url, 'https://notes.example.com').pathname;
+    },
+  };
+  const window = { history, XMLHttpRequest: { prototype: { open() {} } } };
+  const document = {
+    head: {},
+    body: { classList: { contains: () => false, add() {}, remove() {} } },
+    title: 'Home | Notion',
+    createElement: () => ({ addEventListener() {}, appendChild() {} }),
+    querySelector: (selector) => selector === '#notion-app' ? {} : null,
+    querySelectorAll: (selector) => selectors.get(selector) || [],
+  };
+
+  // Executing applyMeta below will throw if the client script references the
+  // worker-only MY_DOMAIN variable instead of the serialized client metadata.
+  runInNewContext(script, {
+    window, document, location, history, MutationObserver: TestMutationObserver, URL,
+    setTimeout: () => 0,
+  });
+  assert.equal(observers.length, 2, 'client should observe head changes and Notion navigation');
+
+  function simulateNotionHeadRewrite() {
+    for (const item of tags.canonical) item.setAttribute('href', '/Notion-Title-11111111111111111111111111111111');
+    for (const item of tags.ogUrl) item.setAttribute('content', '/Notion-Title-11111111111111111111111111111111');
+    for (const item of tags.twitterUrl) item.setAttribute('content', '/Notion-Title-11111111111111111111111111111111');
+    observers[0].callback([]);
+  }
+  function expectCanonical(path) {
+    const expected = 'https://notes.example.com' + path;
+    for (const item of tags.canonical) assert.equal(item.getAttribute('href'), expected);
+    for (const item of tags.ogUrl) assert.equal(item.getAttribute('content'), expected);
+    for (const item of tags.twitterUrl) assert.equal(item.getAttribute('content'), expected);
+  }
+
+  simulateNotionHeadRewrite();
+  expectCanonical('');
+  location.pathname = '/chapter';
+  simulateNotionHeadRewrite();
+  expectCanonical('/chapter');
+  location.pathname = '/' + UNMAPPED;
+  simulateNotionHeadRewrite();
+  expectCanonical('/' + UNMAPPED);
 });
