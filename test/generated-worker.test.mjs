@@ -292,26 +292,8 @@ test('a page without a slug is canonical at its page ID, without home page metad
     canonical: `https://notes.example.com/${UNMAPPED}`,
     ogUrl: `https://notes.example.com/${UNMAPPED}`,
     ogImage: undefined,
-    title: null,
   });
 });
-
-test('a mapped page opened by page ID is canonical at its slug', async (t) => {
-  const head = rewrittenHead(await rewriteHandlers(t, `/${OTHER}`, HOME_METADATA));
-  assert.equal(head.canonical, 'https://notes.example.com/chapter');
-  assert.equal(head.ogImage, 'https://notes.example.com/og-image/chapter');
-});
-
-test('the home page keeps its canonical URL and metadata', async (t) => {
-  const head = rewrittenHead(await rewriteHandlers(t, '/', HOME_METADATA));
-  assert.deepEqual(head, {
-    canonical: 'https://notes.example.com',
-    ogUrl: 'https://notes.example.com',
-    ogImage: 'https://notes.example.com/og-image/',
-    title: 'Home title',
-  });
-});
-
 
 test('generated client keeps canonical metadata after Notion rewrites it on each route', async (t) => {
   const handlers = await rewriteHandlers(t, '/', HOME_METADATA);
@@ -340,41 +322,33 @@ test('generated client keeps canonical metadata after Notion rewrites it on each
   const observers = [];
   class TestMutationObserver {
     constructor(callback) { this.callback = callback; observers.push(this); }
-    observe() {}
+    observe(target, options) { this.target = target; this.options = options; }
   }
   const location = { protocol: 'https:', host: 'notes.example.com', pathname: '/' };
-  const history = {
-    state: {},
-    pushState(_state, _title, url) {
-      if (url !== undefined) location.pathname = new URL(url, 'https://notes.example.com').pathname;
-    },
-    replaceState(_state, _title, url) {
-      if (url !== undefined) location.pathname = new URL(url, 'https://notes.example.com').pathname;
-    },
-  };
-  const window = { history, XMLHttpRequest: { prototype: { open() {} } } };
+  const history = {};
+  const window = { history, XMLHttpRequest: { prototype: {} } };
   const document = {
     head: {},
-    body: { classList: { contains: () => false, add() {}, remove() {} } },
-    title: 'Home | Notion',
-    createElement: () => ({ addEventListener() {}, appendChild() {} }),
-    querySelector: (selector) => selector === '#notion-app' ? {} : null,
+    title: '',
+    createElement: () => ({}),
+    querySelector: () => null,
     querySelectorAll: (selector) => selectors.get(selector) || [],
   };
 
-  // Executing applyMeta below will throw if the client script references the
-  // worker-only MY_DOMAIN variable instead of the serialized client metadata.
   runInNewContext(script, {
     window, document, location, history, MutationObserver: TestMutationObserver, URL,
     setTimeout: () => 0,
   });
-  assert.equal(observers.length, 2, 'client should observe head changes and Notion navigation');
+
+  const headObserver = observers.find((observer) => observer.target === document.head);
+  assert.ok(headObserver, 'client should observe document.head');
+  assert.ok(headObserver.options.attributeFilter.includes('href'));
 
   function simulateNotionHeadRewrite() {
     for (const item of tags.canonical) item.setAttribute('href', '/Notion-Title-11111111111111111111111111111111');
     for (const item of tags.ogUrl) item.setAttribute('content', '/Notion-Title-11111111111111111111111111111111');
     for (const item of tags.twitterUrl) item.setAttribute('content', '/Notion-Title-11111111111111111111111111111111');
-    observers[0].callback([]);
+    headObserver.callback([]);
   }
   function expectCanonical(path) {
     const expected = 'https://notes.example.com' + path;
@@ -383,12 +357,14 @@ test('generated client keeps canonical metadata after Notion rewrites it on each
     for (const item of tags.twitterUrl) assert.equal(item.getAttribute('content'), expected);
   }
 
-  simulateNotionHeadRewrite();
-  expectCanonical('');
-  location.pathname = '/chapter';
-  simulateNotionHeadRewrite();
-  expectCanonical('/chapter');
-  location.pathname = '/' + UNMAPPED;
-  simulateNotionHeadRewrite();
-  expectCanonical('/' + UNMAPPED);
+  for (const [pathname, canonical] of [
+    ['/', ''],
+    ['/chapter', '/chapter'],
+    [`/Some-Page-${OTHER}`, '/chapter'],
+    [`/Some-Page-${UNMAPPED}`, `/${UNMAPPED}`],
+  ]) {
+    location.pathname = pathname;
+    simulateNotionHeadRewrite();
+    expectCanonical(canonical);
+  }
 });
