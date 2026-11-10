@@ -292,6 +292,23 @@ test('a page without a slug is canonical at its page ID, without home page metad
     canonical: `https://notes.example.com/${UNMAPPED}`,
     ogUrl: `https://notes.example.com/${UNMAPPED}`,
     ogImage: undefined,
+    title: null,
+  });
+});
+
+test('a mapped page opened by page ID is canonical at its slug', async (t) => {
+  const head = rewrittenHead(await rewriteHandlers(t, `/${OTHER}`, HOME_METADATA));
+  assert.equal(head.canonical, 'https://notes.example.com/chapter');
+  assert.equal(head.ogImage, 'https://notes.example.com/og-image/chapter');
+});
+
+test('the home page keeps its canonical URL and metadata', async (t) => {
+  const head = rewrittenHead(await rewriteHandlers(t, '/', HOME_METADATA));
+  assert.deepEqual(head, {
+    canonical: 'https://notes.example.com',
+    ogUrl: 'https://notes.example.com',
+    ogImage: 'https://notes.example.com/og-image/',
+    title: 'Home title',
   });
 });
 
