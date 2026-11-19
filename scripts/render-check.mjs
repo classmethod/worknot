@@ -21,6 +21,7 @@ const SUBPAGE = "3e6558d7de17817da2dcd0227d6062e0";
 const DB_ITEM = "3e6558d7de1781258e84de9616a91c0e";
 const PORT = Number(process.env.PORT || 8799);
 const RUNS = Number(process.env.RUNS || 2);
+const TODAY = new Date().toISOString().slice(0, 10);
 
 const DB_VIEWS = ["table", "board", "gallery", "list", "calendar", "timeline"];
 const CRAWLER = "Mozilla/5.0 (compatible; GPTBot/1.2; +https://openai.com/gptbot)";
@@ -85,7 +86,9 @@ async function generateWorker(dir) {
     fs.writeFileSync(path.join(dir, "worker.js"), patched);
     fs.writeFileSync(
       path.join(dir, "wrangler.jsonc"),
-      JSON.stringify({ name: "worknot-render-check", main: "worker.js", compatibility_date: "2026-03-11" }),
+      // A Worker created in the dashboard gets the current date; wrangler falls back
+      // to the newest date its runtime supports
+      JSON.stringify({ name: "worknot-render-check", main: "worker.js", compatibility_date: TODAY }),
     );
   } finally {
     await vite.close();
@@ -118,7 +121,8 @@ async function openPage(browser, target) {
   const context = await browser.newContext({
     ignoreHTTPSErrors: true,
     serviceWorkers: "block",
-    viewport: { width: 1280, height: 1000 },
+    // Notion only renders the blocks near the viewport, so fit the whole test page in it
+    viewport: { width: 1280, height: 6000 },
   });
   const failures = [];
   const origin = new URL(target.origin).host;
