@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
+import { compatibilityDate } from "workerd";
 
 const DOMAIN = "render-check.example.com";
 const NOTION_SITE = "https://succinct-scar-f20.notion.site";
@@ -21,7 +22,10 @@ const SUBPAGE = "3e6558d7de17817da2dcd0227d6062e0";
 const DB_ITEM = "3e6558d7de1781258e84de9616a91c0e";
 const PORT = Number(process.env.PORT || 8799);
 const RUNS = Number(process.env.RUNS || 2);
+// A Worker created in the dashboard gets the current date, but the local runtime
+// refuses dates newer than the ones it supports
 const TODAY = new Date().toISOString().slice(0, 10);
+const COMPAT_DATE = TODAY < compatibilityDate ? TODAY : compatibilityDate;
 
 const DB_VIEWS = ["table", "board", "gallery", "list", "calendar", "timeline"];
 const CRAWLER = "Mozilla/5.0 (compatible; GPTBot/1.2; +https://openai.com/gptbot)";
@@ -86,9 +90,7 @@ async function generateWorker(dir) {
     fs.writeFileSync(path.join(dir, "worker.js"), patched);
     fs.writeFileSync(
       path.join(dir, "wrangler.jsonc"),
-      // A Worker created in the dashboard gets the current date; wrangler falls back
-      // to the newest date its runtime supports
-      JSON.stringify({ name: "worknot-render-check", main: "worker.js", compatibility_date: TODAY }),
+      JSON.stringify({ name: "worknot-render-check", main: "worker.js", compatibility_date: COMPAT_DATE }),
     );
   } finally {
     await vite.close();
